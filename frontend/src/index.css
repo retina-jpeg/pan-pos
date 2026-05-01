@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
+button {
+  user-select: none;
+  cursor: pointer;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+}
