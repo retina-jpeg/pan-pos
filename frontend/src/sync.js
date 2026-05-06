@@ -1,6 +1,6 @@
 import { db } from './db';
 
-export const BASE_URL = 'http://localhost:8080';
+export const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
 async function isBackendUp() {
   try {
@@ -23,7 +23,7 @@ async function post(path, body) {
 
 export async function syncAll(onProgress) {
   if (!(await isBackendUp())) {
-    throw new Error('Backend ulaşılamıyor (localhost:8080)');
+    throw new Error('Backend ulaşılamıyor');
   }
 
   // 1. Locations
