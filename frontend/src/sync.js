@@ -11,6 +11,12 @@ async function isBackendUp() {
   }
 }
 
+async function get(path) {
+  const res = await fetch(`${BASE_URL}${path}`, { signal: AbortSignal.timeout(5000) });
+  if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
+  return res.json();
+}
+
 async function post(path, body) {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
@@ -21,13 +27,38 @@ async function post(path, body) {
   return res.json();
 }
 
+export async function pullFromBackend() {
+  if (!(await isBackendUp())) return;
+
+  const [serverLocs, serverProds] = await Promise.all([
+    get('/api/locations'),
+    get('/api/products'),
+  ]);
+
+  const existingLocs = await db.locations.toArray();
+  const syncedLocIds = new Set(existingLocs.map(l => l.backendId).filter(Boolean));
+  for (const loc of serverLocs) {
+    if (!syncedLocIds.has(loc.id)) {
+      await db.locations.add({ name: loc.name, createdAt: loc.createdAt, synced: true, backendId: loc.id });
+    }
+  }
+
+  const existingProds = await db.products.toArray();
+  const syncedProdIds = new Set(existingProds.map(p => p.backendId).filter(Boolean));
+  for (const prod of serverProds) {
+    if (!syncedProdIds.has(prod.id)) {
+      await db.products.add({ name: prod.name, price: prod.price, createdAt: prod.createdAt, synced: true, backendId: prod.id });
+    }
+  }
+}
+
 export async function syncAll(onProgress) {
   if (!(await isBackendUp())) {
-    throw new Error('Backend ulaşılamıyor');
+    throw new Error('Backend nicht erreichbar');
   }
 
   // 1. Locations
-  onProgress?.('Pazar yerleri senkronize ediliyor...');
+  onProgress?.('Märkte werden synchronisiert...');
   const unsyncedLocs = await db.locations.filter(l => !l.synced).toArray();
   for (const loc of unsyncedLocs) {
     const data = await post('/api/locations', { name: loc.name });
@@ -40,7 +71,7 @@ export async function syncAll(onProgress) {
   allLocs.forEach(l => { if (l.backendId) locMap[l.id] = l.backendId; });
 
   // 2. Products
-  onProgress?.('Ürünler senkronize ediliyor...');
+  onProgress?.('Produkte werden synchronisiert...');
   const unsyncedProds = await db.products.filter(p => !p.synced).toArray();
   for (const prod of unsyncedProds) {
     const data = await post('/api/products', { name: prod.name, price: prod.price });
@@ -52,7 +83,7 @@ export async function syncAll(onProgress) {
   allProds.forEach(p => { if (p.backendId) prodMap[p.id] = p.backendId; });
 
   // 3. Sales
-  onProgress?.('Satışlar senkronize ediliyor...');
+  onProgress?.('Verkäufe werden synchronisiert...');
   const unsyncedSales = await db.sales.filter(s => !s.synced).toArray();
   for (const sale of unsyncedSales) {
     const backendLocationId = locMap[sale.locationId];
@@ -74,7 +105,7 @@ export async function syncAll(onProgress) {
   }
 
   // 4. Expenses
-  onProgress?.('Giderler senkronize ediliyor...');
+  onProgress?.('Ausgaben werden synchronisiert...');
   const unsyncedExps = await db.expenses.filter(e => !e.synced).toArray();
   for (const exp of unsyncedExps) {
     const backendLocationId = locMap[exp.locationId];
@@ -90,7 +121,7 @@ export async function syncAll(onProgress) {
     await db.expenses.update(exp.id, { synced: true });
   }
 
-  onProgress?.('Tamamlandı');
+  onProgress?.('Abgeschlossen');
 }
 
 export async function countUnsynced() {

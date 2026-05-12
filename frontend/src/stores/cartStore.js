@@ -37,6 +37,15 @@ export const useCartStore = create(
         )});
       },
 
+      setRabatt: (amount) => {
+        const items = get().items.filter(i => i.product.id !== '__rabatt__');
+        if (amount > 0) {
+          set({ items: [...items, { product: { id: '__rabatt__', name: 'Rabatt', price: -amount }, quantity: 1, price: -amount }] });
+        } else {
+          set({ items });
+        }
+      },
+
       clearCart: () => set({ items: [] }),
 
       getTotal: () =>

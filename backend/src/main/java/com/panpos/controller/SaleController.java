@@ -35,7 +35,7 @@ public class SaleController {
             item.setProductName(r.productName());
             item.setQuantity(r.quantity());
             item.setPrice(r.price());
-            productRepo.findById(r.productId()).ifPresent(item::setProduct);
+            if (r.productId() != null) productRepo.findById(r.productId()).ifPresent(item::setProduct);
             return item;
         }).toList();
 

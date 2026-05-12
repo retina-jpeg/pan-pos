@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 import { db } from '../db';
 
-const CATEGORIES = ['Kira', 'Nakliye', 'Malzeme', 'Personel', 'Diğer'];
+const CATEGORIES = ['Miete', 'Transport', 'Material', 'Personal', 'Sonstiges'];
 
 export default function ExpensesPage() {
-  const [expenses,  setExpenses]  = useState([]);
-  const [locations, setLocations] = useState([]);
-  const [amount,    setAmount]    = useState('');
-  const [category,  setCategory]  = useState(CATEGORIES[0]);
-  const [locationId,setLocationId]= useState('');
-  const [note,      setNote]      = useState('');
+  const [expenses,   setExpenses]   = useState([]);
+  const [locations,  setLocations]  = useState([]);
+  const [amount,     setAmount]     = useState('');
+  const [category,   setCategory]   = useState(CATEGORIES[0]);
+  const [locationId, setLocationId] = useState('');
+  const [note,       setNote]       = useState('');
 
   async function load() {
     const locs = await db.locations.toArray();
@@ -30,10 +30,7 @@ export default function ExpensesPage() {
       category,
       locationId: parseInt(locationId),
       note: note.trim(),
-      date: now,
-      createdAt: now,
-      updatedAt: now,
-      synced: false,
+      date: now, createdAt: now, updatedAt: now, synced: false,
     });
     setAmount(''); setNote('');
     load();
@@ -48,13 +45,13 @@ export default function ExpensesPage() {
 
   return (
     <div className="max-w-2xl mx-auto p-4 pb-10">
-      <h1 className="text-2xl font-bold mb-5 text-gray-800">Giderler</h1>
+      <h1 className="text-2xl font-bold mb-5 text-gray-800">Ausgaben</h1>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-4 shadow-sm mb-6 space-y-3">
         <div className="flex gap-2 flex-wrap">
           <input
             type="number"
-            placeholder="€ Tutar"
+            placeholder="€ Betrag"
             value={amount}
             onChange={e => setAmount(e.target.value)}
             min="0" step="0.5"
@@ -78,7 +75,7 @@ export default function ExpensesPage() {
         <div className="flex gap-2">
           <input
             type="text"
-            placeholder="Not (isteğe bağlı)"
+            placeholder="Notiz (optional)"
             value={note}
             onChange={e => setNote(e.target.value)}
             className="flex-1 border border-gray-300 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-emerald-500"
@@ -86,9 +83,7 @@ export default function ExpensesPage() {
           <button
             type="submit"
             className="px-5 py-3 bg-emerald-600 text-white font-bold rounded-xl active:bg-emerald-700"
-          >
-            Ekle
-          </button>
+          >Hinzufügen</button>
         </div>
       </form>
 
@@ -98,7 +93,7 @@ export default function ExpensesPage() {
             <div className="flex-1 min-w-0">
               <div className="font-bold text-gray-800">{exp.category}</div>
               <div className="text-sm text-gray-500 truncate">
-                {locName(exp.locationId)} · {new Date(exp.date).toLocaleDateString('tr-TR')}
+                {locName(exp.locationId)} · {new Date(exp.date).toLocaleDateString('de-DE')}
                 {exp.note && ` · ${exp.note}`}
               </div>
             </div>
@@ -106,12 +101,12 @@ export default function ExpensesPage() {
             <button
               onClick={() => deleteExpense(exp.id)}
               className="text-gray-400 hover:text-red-500 px-2 py-1 text-lg leading-none active:text-red-700"
-              title="Sil"
+              title="Löschen"
             >×</button>
           </div>
         ))}
         {expenses.length === 0 && (
-          <p className="text-center text-gray-400 py-10">Henüz gider yok</p>
+          <p className="text-center text-gray-400 py-10">Noch keine Ausgaben</p>
         )}
       </div>
     </div>
