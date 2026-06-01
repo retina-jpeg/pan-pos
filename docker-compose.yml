@@ -15,11 +15,14 @@ services:
 
   backend:
     build: ./backend
-    env_file:
-      - .env
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/panpos
+      DB_USER: postgres
+      DB_PASSWORD: postgres
     depends_on:
       db:
         condition: service_healthy
+
 
   frontend:
     build: ./frontend
