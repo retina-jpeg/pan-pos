@@ -116,6 +116,7 @@ export default function CashierPage() {
       items.map(i => ({
         saleId, productId: i.product.id, productName: i.product.name,
         quantity: i.quantity, price: i.price,
+        costPrice: i.product.einkaufspreis ?? 0,
       }))
     );
     setLastSale({ total, itemCount: items.reduce((s, i) => s + i.quantity, 0) });

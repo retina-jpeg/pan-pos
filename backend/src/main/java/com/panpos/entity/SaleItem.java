@@ -25,6 +25,8 @@ public class SaleItem {
     @Column(nullable = false)
     private Double price;
 
+    private Double costPrice;
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
@@ -42,4 +44,7 @@ public class SaleItem {
 
     public Double getPrice() { return price; }
     public void setPrice(Double price) { this.price = price; }
+
+    public Double getCostPrice() { return costPrice; }
+    public void setCostPrice(Double costPrice) { this.costPrice = costPrice; }
 }

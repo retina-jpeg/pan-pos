@@ -114,11 +114,12 @@ function SpectrumPicker({ value, onChange }) {
 }
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState([]);
-  const [name, setName]         = useState('');
-  const [price, setPrice]       = useState('');
-  const [color, setColor]       = useState(DEFAULT_COLOR);
-  const [editId, setEditId]     = useState(null);
+  const [products, setProducts]       = useState([]);
+  const [name, setName]               = useState('');
+  const [price, setPrice]             = useState('');
+  const [einkaufspreis, setEinkauf]   = useState('');
+  const [color, setColor]             = useState(DEFAULT_COLOR);
+  const [editId, setEditId]           = useState(null);
 
   async function load() {
     setProducts(await db.products.toArray());
@@ -130,22 +131,25 @@ export default function ProductsPage() {
     e.preventDefault();
     if (!name.trim() || !price) return;
     const now = new Date().toISOString();
+    const ek = einkaufspreis ? parseFloat(einkaufspreis) : null;
     if (editId) {
       await db.products.update(editId, {
-        name: name.trim(), price: parseFloat(price), color, updatedAt: now, synced: false,
+        name: name.trim(), price: parseFloat(price), einkaufspreis: ek, color, updatedAt: now, synced: false,
       });
       setEditId(null);
     } else {
       await db.products.add({
-        name: name.trim(), price: parseFloat(price), color, createdAt: now, updatedAt: now, synced: false,
+        name: name.trim(), price: parseFloat(price), einkaufspreis: ek, color, createdAt: now, updatedAt: now, synced: false,
       });
     }
-    setName(''); setPrice(''); setColor(DEFAULT_COLOR);
+    setName(''); setPrice(''); setEinkauf(''); setColor(DEFAULT_COLOR);
     load();
   }
 
   function startEdit(p) {
-    setEditId(p.id); setName(p.name); setPrice(String(p.price)); setColor(p.color || DEFAULT_COLOR);
+    setEditId(p.id); setName(p.name); setPrice(String(p.price));
+    setEinkauf(p.einkaufspreis != null ? String(p.einkaufspreis) : '');
+    setColor(p.color || DEFAULT_COLOR);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -160,21 +164,29 @@ export default function ProductsPage() {
       <h1 className="text-2xl font-bold mb-5 text-gray-800">Produkte</h1>
 
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-4 shadow-sm mb-6 space-y-3">
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <input
             type="text"
             placeholder="Produktname"
             value={name}
             onChange={e => setName(e.target.value)}
-            className="flex-1 border border-gray-300 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-emerald-500"
+            className="flex-1 min-w-[140px] border border-gray-300 rounded-xl px-4 py-3 text-base focus:outline-none focus:border-emerald-500"
           />
           <input
             type="number"
-            placeholder="€ Preis"
+            placeholder="VK €"
             value={price}
             onChange={e => setPrice(e.target.value)}
             min="0" step="0.5"
-            className="w-28 border border-gray-300 rounded-xl px-3 py-3 text-base focus:outline-none focus:border-emerald-500"
+            className="w-24 border border-gray-300 rounded-xl px-3 py-3 text-base focus:outline-none focus:border-emerald-500"
+          />
+          <input
+            type="number"
+            placeholder="EK €"
+            value={einkaufspreis}
+            onChange={e => setEinkauf(e.target.value)}
+            min="0" step="0.01"
+            className="w-24 border border-gray-300 rounded-xl px-3 py-3 text-base focus:outline-none focus:border-emerald-500"
           />
         </div>
         <SpectrumPicker value={color} onChange={setColor} />
@@ -186,7 +198,7 @@ export default function ProductsPage() {
           {editId && (
             <button
               type="button"
-              onClick={() => { setEditId(null); setName(''); setPrice(''); setColor(DEFAULT_COLOR); }}
+              onClick={() => { setEditId(null); setName(''); setPrice(''); setEinkauf(''); setColor(DEFAULT_COLOR); }}
               className="px-4 py-3 bg-gray-200 text-gray-700 rounded-xl font-medium active:bg-gray-300"
             >Abbrechen</button>
           )}
@@ -200,7 +212,10 @@ export default function ProductsPage() {
               className="w-5 h-5 rounded-lg shrink-0 border border-gray-200"
               style={{ backgroundColor: p.color || DEFAULT_COLOR }}
             />
-            <div className="flex-1 font-bold text-gray-800">{p.name}</div>
+            <div className="flex-1 min-w-0">
+              <div className="font-bold text-gray-800">{p.name}</div>
+              <div className="text-xs text-gray-400">EK: {p.einkaufspreis != null ? `€${p.einkaufspreis}` : '—'}</div>
+            </div>
             <div className="text-emerald-600 font-bold text-lg">€{p.price}</div>
             <button onClick={() => startEdit(p)}
               className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium active:bg-gray-200"

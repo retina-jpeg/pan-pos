@@ -31,6 +31,7 @@ public class ProductController {
         return repo.findById(id).map(p -> {
             p.setName(body.getName());
             p.setPrice(body.getPrice());
+            p.setCostPrice(body.getCostPrice());
             p.setUpdatedAt(LocalDateTime.now());
             return ResponseEntity.ok(repo.save(p));
         }).orElse(ResponseEntity.notFound().build());
