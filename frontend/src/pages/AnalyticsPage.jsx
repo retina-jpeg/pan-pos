@@ -21,7 +21,7 @@ export default function AnalyticsPage() {
   });
   const [to, setTo]           = useState(() => new Date().toISOString().slice(0, 10));
   const [locFilter, setLocFilter] = useState('');
-  const [stats, setStats]     = useState({ sales: 0, expenses: 0, profit: 0 });
+  const [stats, setStats]     = useState({ sales: 0, expenses: 0, artikelkosten: 0, profit: 0 });
   const [daily, setDaily]     = useState([]);
   const [byLocation, setByLocation] = useState([]);
   const [locations, setLocations]   = useState([]);
@@ -34,8 +34,7 @@ export default function AnalyticsPage() {
 
     const fromMs = new Date(from).getTime();
     const toMs   = new Date(to + 'T23:59:59').getTime();
-
-    const locId = locFilter ? parseInt(locFilter) : null;
+    const locId  = locFilter ? parseInt(locFilter) : null;
 
     const [sales, expenses] = await Promise.all([
       db.sales.filter(s => {
@@ -48,33 +47,45 @@ export default function AnalyticsPage() {
       }).toArray(),
     ]);
 
+    const saleIds   = sales.map(s => s.id);
+    const saleItems = saleIds.length > 0
+      ? await db.saleItems.where('saleId').anyOf(saleIds).toArray()
+      : [];
+
     const totalSales    = sales.reduce((s, r) => s + r.total, 0);
     const totalExpenses = expenses.reduce((s, r) => s + r.amount, 0);
-    setStats({ sales: totalSales, expenses: totalExpenses, profit: totalSales - totalExpenses });
+    const totalArtikel  = saleItems.reduce((s, i) => s + (i.costPrice ?? 0) * i.quantity, 0);
+    setStats({ sales: totalSales, expenses: totalExpenses, artikelkosten: totalArtikel, profit: totalSales - totalExpenses - totalArtikel });
+
+    const saleMap = {};
+    sales.forEach(s => { saleMap[s.id] = { date: s.date.slice(0, 10), locationId: s.locationId }; });
 
     const dayMap = {};
-    sales.forEach(s => {
-      const d = s.date.slice(0, 10);
-      dayMap[d] = dayMap[d] || { date: d, Einnahmen: 0, Ausgaben: 0 };
-      dayMap[d].Einnahmen += s.total;
-    });
-    expenses.forEach(e => {
-      const d = e.date.slice(0, 10);
-      dayMap[d] = dayMap[d] || { date: d, Einnahmen: 0, Ausgaben: 0 };
-      dayMap[d].Ausgaben += e.amount;
+    const addDay = d => { dayMap[d] = dayMap[d] || { date: d, Einnahmen: 0, Ausgaben: 0, Artikelkosten: 0 }; };
+
+    sales.forEach(s => { const d = s.date.slice(0, 10); addDay(d); dayMap[d].Einnahmen += s.total; });
+    expenses.forEach(e => { const d = e.date.slice(0, 10); addDay(d); dayMap[d].Ausgaben += e.amount; });
+    saleItems.forEach(si => {
+      const d = saleMap[si.saleId]?.date;
+      if (d) { addDay(d); dayMap[d].Artikelkosten += (si.costPrice ?? 0) * si.quantity; }
     });
     setDaily(Object.values(dayMap).sort((a, b) => a.date.localeCompare(b.date)));
 
     const locMap = {};
+    const addLoc = name => { locMap[name] = locMap[name] || { name, Einnahmen: 0, Ausgaben: 0, Artikelkosten: 0 }; };
+
     sales.forEach(s => {
       const name = locs.find(l => l.id === s.locationId)?.name ?? 'Sonstiges';
-      locMap[name] = locMap[name] || { name, Einnahmen: 0, Ausgaben: 0 };
-      locMap[name].Einnahmen += s.total;
+      addLoc(name); locMap[name].Einnahmen += s.total;
     });
     expenses.forEach(e => {
       const name = locs.find(l => l.id === e.locationId)?.name ?? 'Sonstiges';
-      locMap[name] = locMap[name] || { name, Einnahmen: 0, Ausgaben: 0 };
-      locMap[name].Ausgaben += e.amount;
+      addLoc(name); locMap[name].Ausgaben += e.amount;
+    });
+    saleItems.forEach(si => {
+      const locId = saleMap[si.saleId]?.locationId;
+      const name  = locs.find(l => l.id === locId)?.name ?? 'Sonstiges';
+      addLoc(name); locMap[name].Artikelkosten += (si.costPrice ?? 0) * si.quantity;
     });
     setByLocation(Object.values(locMap));
   }
@@ -107,9 +118,10 @@ export default function AnalyticsPage() {
         </select>
       </div>
 
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        <StatCard label="Gesamteinnahmen" value={stats.sales}    color="text-emerald-600" />
-        <StatCard label="Gesamtausgaben"  value={stats.expenses} color="text-red-500" />
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <StatCard label="Gesamteinnahmen" value={stats.sales}         color="text-emerald-600" />
+        <StatCard label="Gesamtausgaben"  value={stats.expenses}      color="text-red-500" />
+        <StatCard label="Artikelkosten"   value={stats.artikelkosten} color="text-orange-500" />
         <StatCard
           label="Nettogewinn"
           value={stats.profit}
@@ -127,8 +139,9 @@ export default function AnalyticsPage() {
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip formatter={v => `€${Number(v).toFixed(2)}`} />
               <Legend />
-              <Bar dataKey="Einnahmen" fill="#10b981" radius={[4,4,0,0]} />
-              <Bar dataKey="Ausgaben"  fill="#ef4444" radius={[4,4,0,0]} />
+              <Bar dataKey="Einnahmen"     fill="#10b981" radius={[4,4,0,0]} />
+              <Bar dataKey="Ausgaben"      fill="#ef4444" radius={[4,4,0,0]} />
+              <Bar dataKey="Artikelkosten" fill="#f97316" radius={[4,4,0,0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -144,8 +157,9 @@ export default function AnalyticsPage() {
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip formatter={v => `€${Number(v).toFixed(2)}`} />
               <Legend />
-              <Bar dataKey="Einnahmen" fill="#10b981" radius={[4,4,0,0]} />
-              <Bar dataKey="Ausgaben"  fill="#ef4444" radius={[4,4,0,0]} />
+              <Bar dataKey="Einnahmen"     fill="#10b981" radius={[4,4,0,0]} />
+              <Bar dataKey="Ausgaben"      fill="#ef4444" radius={[4,4,0,0]} />
+              <Bar dataKey="Artikelkosten" fill="#f97316" radius={[4,4,0,0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>

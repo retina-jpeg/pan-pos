@@ -4,5 +4,6 @@ public record SaleItemRequest(
     Long productId,
     String productName,
     Integer quantity,
-    Double price
+    Double price,
+    Double costPrice
 ) {}
