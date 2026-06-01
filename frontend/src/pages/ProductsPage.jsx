@@ -1,117 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { db } from '../db';
 
-function hslToHex(h, s, l) {
-  l /= 100; s /= 100;
-  const a = s * Math.min(l, 1 - l);
-  const f = n => {
-    const k = (n + h / 30) % 12;
-    return Math.round(255 * (l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1)))
-      .toString(16).padStart(2, '0');
-  };
-  return `#${f(0)}${f(8)}${f(4)}`;
-}
-
-function hexToHsl(hex) {
-  if (!hex || hex.length < 7) return { h: 0, s: 0, l: 80 };
-  const r = parseInt(hex.slice(1, 3), 16) / 255;
-  const g = parseInt(hex.slice(3, 5), 16) / 255;
-  const b = parseInt(hex.slice(5, 7), 16) / 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  let h = 0, s = 0;
-  const l = (max + min) / 2;
-  if (max !== min) {
-    const d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
-      case g: h = ((b - r) / d + 2) / 6; break;
-      case b: h = ((r - g) / d + 4) / 6; break;
-    }
-  }
-  return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
-}
-
-function getRelativeX(e, el) {
-  const rect = el.getBoundingClientRect();
-  const clientX = e.touches?.[0]?.clientX ?? e.changedTouches?.[0]?.clientX ?? e.clientX;
-  return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-}
-
 const DEFAULT_COLOR = '#e5e7eb';
-
-function SpectrumPicker({ value, onChange }) {
-  const hueRef   = useRef(null);
-  const lightRef = useRef(null);
-  const { h, l } = hexToHsl(value || DEFAULT_COLOR);
-
-  function pickHue(e) {
-    e.preventDefault();
-    const newH = Math.round(getRelativeX(e, hueRef.current) * 360);
-    onChange(hslToHex(newH, 100, Math.max(l, 20)));
-  }
-
-  function pickLight(e) {
-    e.preventDefault();
-    const newL = Math.round(getRelativeX(e, lightRef.current) * 100);
-    onChange(hslToHex(h, newL < 10 ? 0 : 100, newL));
-  }
-
-  const markerStyle = (pct) => ({
-    left: `calc(${pct}% - 8px)`,
-    position: 'absolute',
-    top: '50%',
-    transform: 'translateY(-50%)',
-    width: 16,
-    height: 16,
-    borderRadius: '50%',
-    border: '2.5px solid white',
-    boxShadow: '0 1px 4px rgba(0,0,0,0.4)',
-    pointerEvents: 'none',
-    backgroundColor: value || DEFAULT_COLOR,
-  });
-
-  return (
-    <div className="space-y-3">
-      {/* Hue strip */}
-      <div className="relative h-9">
-        <div
-          ref={hueRef}
-          className="absolute inset-0 rounded-xl cursor-pointer"
-          style={{
-            background: 'linear-gradient(to right, hsl(0,100%,50%), hsl(30,100%,50%), hsl(60,100%,50%), hsl(90,100%,50%), hsl(120,100%,50%), hsl(150,100%,50%), hsl(180,100%,50%), hsl(210,100%,50%), hsl(240,100%,50%), hsl(270,100%,50%), hsl(300,100%,50%), hsl(330,100%,50%), hsl(360,100%,50%))',
-          }}
-          onClick={pickHue}
-          onTouchEnd={pickHue}
-        />
-        <div style={markerStyle(h / 360 * 100)} />
-      </div>
-
-      {/* Lightness strip */}
-      <div className="relative h-9">
-        <div
-          ref={lightRef}
-          className="absolute inset-0 rounded-xl cursor-pointer"
-          style={{
-            background: `linear-gradient(to right, #000, hsl(${h},100%,50%), #fff)`,
-          }}
-          onClick={pickLight}
-          onTouchEnd={pickLight}
-        />
-        <div style={markerStyle(l)} />
-      </div>
-
-      {/* Preview */}
-      <div className="flex items-center gap-3">
-        <div
-          className="w-10 h-10 rounded-xl border border-gray-200 shrink-0"
-          style={{ backgroundColor: value || DEFAULT_COLOR }}
-        />
-        <span className="text-sm text-gray-400 font-mono">{value || DEFAULT_COLOR}</span>
-      </div>
-    </div>
-  );
-}
 
 export default function ProductsPage() {
   const [products, setProducts]       = useState([]);
@@ -189,7 +79,17 @@ export default function ProductsPage() {
             className="w-24 border border-gray-300 rounded-xl px-3 py-3 text-base focus:outline-none focus:border-emerald-500"
           />
         </div>
-        <SpectrumPicker value={color} onChange={setColor} />
+
+        <div className="flex items-center gap-3">
+          <input
+            type="color"
+            value={color}
+            onChange={e => setColor(e.target.value)}
+            className="w-11 h-11 rounded-xl border border-gray-300 cursor-pointer p-0.5 bg-white"
+          />
+          <span className="text-sm text-gray-400 font-mono">{color}</span>
+        </div>
+
         <div className="flex gap-2">
           <button
             type="submit"
