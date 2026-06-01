@@ -5,7 +5,7 @@ import { useSyncStore } from '../syncStore';
 const links = [
   { to: '/cashier',   label: 'Kasse',    icon: '🛒' },
   { to: '/products',  label: 'Produkte', icon: '📦' },
-  { to: '/gelirler',  label: 'Einnahmen',icon: '💰' },
+  { to: '/gelirler',  label: 'Verkäufe', icon: '💰' },
   { to: '/expenses',  label: 'Ausgaben', icon: '💸' },
   { to: '/analytics', label: 'Analyse',  icon: '📊' },
 ];

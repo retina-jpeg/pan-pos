@@ -60,7 +60,7 @@ export default function GelirlerPage() {
   return (
     <div className="max-w-2xl mx-auto p-4 pb-10">
       <div className="flex items-baseline justify-between mb-4">
-        <h1 className="text-2xl font-bold text-gray-800">Einnahmen</h1>
+        <h1 className="text-2xl font-bold text-gray-800">Verkäufe</h1>
         {filtered.length > 0 && (
           <span className="text-emerald-600 font-bold text-lg">€{total.toFixed(2)}</span>
         )}
