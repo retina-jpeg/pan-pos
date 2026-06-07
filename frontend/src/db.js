@@ -10,4 +10,8 @@ db.version(1).stores({
   expenses:  '++id, date, locationId, category, synced',
 });
 
+db.version(2).stores({
+  locations: '++id, name, synced, closed',
+});
+
 export async function seedDefaultData() {}

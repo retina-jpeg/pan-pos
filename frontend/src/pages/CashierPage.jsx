@@ -4,7 +4,7 @@ import { useCartStore } from '../stores/cartStore';
 import { runAutoSync } from '../autoSync';
 import NumPad from '../components/NumPad';
 
-const EXPENSE_CATEGORIES = ['Miete', 'Transport', 'Material', 'Personal', 'Sonstiges'];
+const EXPENSE_CATEGORIES = ['Miete', 'Strom', 'Hotel', 'Fahrtkosten', 'Sonstige'];
 
 function getDateBound(filter) {
   const now = new Date();
@@ -25,6 +25,126 @@ function getDateBound(filter) {
     return d.toISOString();
   }
   return null;
+}
+
+const fmt     = v  => `€${Number(v).toFixed(2)}`;
+const fmtDate = d  => new Date(d).toLocaleDateString('de-DE', {
+  day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+});
+
+async function generateReport(loc, e) {
+  e?.stopPropagation();
+
+  const sales = await db.sales.where('locationId').equals(loc.id).toArray();
+  sales.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const saleIds      = sales.map(s => s.id);
+  const allSaleItems = saleIds.length > 0
+    ? await db.saleItems.where('saleId').anyOf(saleIds).toArray()
+    : [];
+  const expenses = await db.expenses.where('locationId').equals(loc.id).toArray();
+
+  const itemsBySale = {};
+  allSaleItems.forEach(si => {
+    if (!itemsBySale[si.saleId]) itemsBySale[si.saleId] = [];
+    itemsBySale[si.saleId].push(si);
+  });
+
+  const totalUmsatz       = sales.reduce((s, r) => s + r.total, 0);
+  const totalAusgaben     = expenses.reduce((s, r) => s + r.amount, 0);
+  const totalArtikelkosten = allSaleItems.reduce((s, i) => s + (i.costPrice ?? 0) * i.quantity, 0);
+  const nettogewinn       = totalUmsatz - totalAusgaben - totalArtikelkosten;
+
+  const prodMap = {};
+  allSaleItems.forEach(si => {
+    const cp = si.costPrice ?? 0;
+    if (!prodMap[si.productName]) prodMap[si.productName] = { qty: 0, total: 0 };
+    prodMap[si.productName].qty   += si.quantity;
+    prodMap[si.productName].total += cp * si.quantity;
+  });
+
+  const salesRows = sales.map(sale => {
+    const its = (itemsBySale[sale.id] || []).map(i => `${i.productName} ×${i.quantity}`).join(', ');
+    return `<tr><td>${fmtDate(sale.date)}</td><td>${its}</td><td class="amt">${fmt(sale.total)}</td></tr>`;
+  }).join('');
+
+  const expRows = expenses.map(e =>
+    `<tr><td>${e.category}</td><td>${e.note || '—'}</td><td class="amt">${fmt(e.amount)}</td></tr>`
+  ).join('');
+
+  const artRows = Object.entries(prodMap)
+    .filter(([, v]) => v.total > 0)
+    .sort((a, b) => b[1].total - a[1].total)
+    .map(([name, v]) => `<tr><td>${name}</td><td class="ctr">${v.qty}</td><td class="amt">${fmt(v.total)}</td></tr>`)
+    .join('');
+
+  const html = `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
+<title>Marktbericht – ${loc.name}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;font-size:13px;color:#111;padding:28px}
+h1{font-size:22px;margin-bottom:4px}
+.meta{color:#6b7280;font-size:12px;margin-bottom:24px}
+.summary{display:flex;gap:12px;margin-bottom:28px;flex-wrap:wrap}
+.card{border:1px solid #e5e7eb;border-radius:8px;padding:12px 16px;min-width:130px}
+.card .lbl{font-size:11px;color:#6b7280;margin-bottom:4px}
+.card .val{font-size:18px;font-weight:bold}
+.green{color:#059669}.red{color:#dc2626}.blue{color:#2563eb}.orange{color:#ea580c}
+section{margin-bottom:28px}
+section h2{font-size:14px;font-weight:bold;border-bottom:2px solid #e5e7eb;padding-bottom:6px;margin-bottom:10px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:6px 8px;background:#f9fafb;border-bottom:1px solid #e5e7eb;font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:.05em}
+td{padding:7px 8px;border-bottom:1px solid #f3f4f6}
+.amt{text-align:right;font-weight:bold}.ctr{text-align:center}
+tfoot td{font-weight:bold;background:#f9fafb;border-top:2px solid #e5e7eb}
+@media print{body{padding:0}}
+</style></head><body>
+<h1>${loc.name}</h1>
+<div class="meta">
+  Erstellt: ${fmtDate(loc.createdAt)}
+  ${loc.closedAt ? ` &nbsp;·&nbsp; Geschlossen: ${fmtDate(loc.closedAt)}` : ''}
+  &nbsp;·&nbsp; Bericht: ${fmtDate(new Date().toISOString())}
+</div>
+
+<div class="summary">
+  <div class="card"><div class="lbl">Umsatz</div><div class="val blue">${fmt(totalUmsatz)}</div></div>
+  <div class="card"><div class="lbl">Ausgaben</div><div class="val red">${fmt(totalAusgaben)}</div></div>
+  <div class="card"><div class="lbl">Artikelkosten</div><div class="val orange">${fmt(totalArtikelkosten)}</div></div>
+  <div class="card"><div class="lbl">Nettogewinn</div><div class="val ${nettogewinn >= 0 ? 'green' : 'red'}">${fmt(nettogewinn)}</div></div>
+</div>
+
+<section>
+  <h2>Verkäufe (${sales.length})</h2>
+  ${sales.length > 0
+    ? `<table><thead><tr><th>Zeit</th><th>Artikel</th><th>Betrag</th></tr></thead>
+       <tbody>${salesRows}</tbody>
+       <tfoot><tr><td colspan="2">Gesamt</td><td class="amt">${fmt(totalUmsatz)}</td></tr></tfoot></table>`
+    : '<p style="color:#9ca3af;padding:8px 0">Keine Verkäufe</p>'}
+</section>
+
+<section>
+  <h2>Ausgaben (${expenses.length})</h2>
+  ${expenses.length > 0
+    ? `<table><thead><tr><th>Kategorie</th><th>Notiz</th><th>Betrag</th></tr></thead>
+       <tbody>${expRows}</tbody>
+       <tfoot><tr><td colspan="2">Gesamt</td><td class="amt">${fmt(totalAusgaben)}</td></tr></tfoot></table>`
+    : '<p style="color:#9ca3af;padding:8px 0">Keine Ausgaben</p>'}
+</section>
+
+${artRows ? `<section>
+  <h2>Artikelkosten</h2>
+  <table><thead><tr><th>Produkt</th><th>Menge</th><th>Kosten</th></tr></thead>
+  <tbody>${artRows}</tbody>
+  <tfoot><tr><td colspan="2">Gesamt</td><td class="amt">${fmt(totalArtikelkosten)}</td></tr></tfoot></table>
+</section>` : ''}
+
+</body></html>`;
+
+  const win = window.open('', '_blank');
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 400);
 }
 
 export default function CashierPage() {
@@ -91,6 +211,15 @@ export default function CashierPage() {
     loadLocations();
   }
 
+  async function closePazar() {
+    if (!window.confirm(`"${activePazar.name}" abschließen? Der Markt kann danach nicht mehr geöffnet werden.`)) return;
+    const now = new Date().toISOString();
+    await db.locations.update(activePazar.id, { closed: true, closedAt: now, synced: false });
+    clearCart();
+    setActivePazar(null);
+    loadLocations();
+  }
+
   async function deletePazar(loc, e) {
     e.stopPropagation();
     if (!window.confirm(`"${loc.name}" und alle zugehörigen Verkäufe und Ausgaben löschen?`)) return;
@@ -152,17 +281,35 @@ export default function CashierPage() {
 
           <div className="space-y-2">
             {filtered.map(loc => (
-              <div key={loc.id} className="bg-white rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3">
-                <button onClick={() => selectPazar(loc)} className="flex-1 text-left active:opacity-70">
-                  <div className="font-bold text-gray-800">{loc.name}</div>
-                  <div className="text-sm text-gray-400 mt-0.5">
-                    {new Date(loc.createdAt).toLocaleDateString('de-DE', {
-                      day: '2-digit', month: '2-digit', year: 'numeric',
-                      hour: '2-digit', minute: '2-digit',
-                    })}
+              <div
+                key={loc.id}
+                className={`rounded-2xl px-4 py-3 shadow-sm flex items-center gap-2 ${loc.closed ? 'bg-gray-50' : 'bg-white'}`}
+              >
+                {loc.closed ? (
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-gray-400">{loc.name}</span>
+                      <span className="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full font-medium shrink-0">
+                        Geschlossen
+                      </span>
+                    </div>
+                    <div className="text-sm text-gray-400 mt-0.5">
+                      {fmtDate(loc.createdAt)}
+                      {loc.closedAt && ` – ${fmtDate(loc.closedAt)}`}
+                    </div>
                   </div>
-                </button>
-                <span className="text-gray-300 text-xl">›</span>
+                ) : (
+                  <button onClick={() => selectPazar(loc)} className="flex-1 text-left active:opacity-70 min-w-0">
+                    <div className="font-bold text-gray-800">{loc.name}</div>
+                    <div className="text-sm text-gray-400 mt-0.5">{fmtDate(loc.createdAt)}</div>
+                  </button>
+                )}
+                {!loc.closed && <span className="text-gray-300 text-xl shrink-0">›</span>}
+                <button
+                  onClick={e => generateReport(loc, e)}
+                  className="px-2.5 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-sm font-medium active:bg-blue-100 shrink-0"
+                  title="PDF Bericht"
+                >PDF</button>
                 <button
                   onClick={e => deletePazar(loc, e)}
                   className="text-gray-300 hover:text-red-500 active:text-red-700 text-xl px-1 leading-none shrink-0"
@@ -196,7 +343,7 @@ export default function CashierPage() {
               <div className="space-y-2 mb-5">
                 {EXPENSE_CATEGORIES.map(cat => (
                   <div key={cat} className="flex items-center gap-3">
-                    <span className="w-20 text-sm text-gray-600 shrink-0">{cat}</span>
+                    <span className="w-24 text-sm text-gray-600 shrink-0">{cat}</span>
                     <input
                       type="number" min="0" step="0.5" placeholder="€ 0"
                       value={expenses[cat] || ''}
@@ -235,7 +382,15 @@ export default function CashierPage() {
           <button onClick={goBack}
             className="px-4 py-2 bg-gray-100 text-gray-600 rounded-xl text-sm font-medium active:bg-gray-200"
           >‹ Zurück</button>
-          <span className="font-bold text-gray-800 text-base">{activePazar.name}</span>
+          <span className="font-bold text-gray-800 text-base flex-1 truncate">{activePazar.name}</span>
+          <button
+            onClick={e => generateReport(activePazar, e)}
+            className="px-3 py-2 bg-blue-50 text-blue-600 rounded-xl text-sm font-medium active:bg-blue-100 shrink-0"
+          >PDF</button>
+          <button
+            onClick={closePazar}
+            className="px-3 py-2 bg-red-50 text-red-600 rounded-xl text-sm font-medium active:bg-red-100 shrink-0"
+          >Abschließen</button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-3">
