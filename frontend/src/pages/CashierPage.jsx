@@ -66,6 +66,19 @@ async function generateReport(loc, e) {
     prodMap[si.productName].total += cp * si.quantity;
   });
 
+  // Product sales summary (quantity sold + revenue), excluding the Rabatt line.
+  const prodSalesMap = {};
+  let totalProdQty = 0;
+  let totalProdRevenue = 0;
+  allSaleItems.forEach(si => {
+    if (si.productId === '__rabatt__' || si.productName === 'Rabatt') return;
+    if (!prodSalesMap[si.productName]) prodSalesMap[si.productName] = { qty: 0, revenue: 0 };
+    prodSalesMap[si.productName].qty     += si.quantity;
+    prodSalesMap[si.productName].revenue += si.price * si.quantity;
+    totalProdQty     += si.quantity;
+    totalProdRevenue += si.price * si.quantity;
+  });
+
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const pageW  = doc.internal.pageSize.getWidth();
   const margin = 40;
@@ -118,6 +131,23 @@ async function generateReport(loc, e) {
     doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(17, 17, 17);
     doc.text(title, margin, y);
     y += 8;
+  }
+
+  // ── Produktverkäufe ──
+  const prodSalesBody = Object.entries(prodSalesMap)
+    .sort((a, b) => b[1].qty - a[1].qty)
+    .map(([name, v]) => [name, String(v.qty), fmt(v.revenue)]);
+  if (prodSalesBody.length > 0) {
+    sectionTitle('Produktverkäufe');
+    autoTable(doc, {
+      ...tableOpts,
+      startY: y,
+      head: [['Produkt', 'Verkauft', 'Umsatz']],
+      body: prodSalesBody,
+      foot: [['Gesamt', String(totalProdQty), fmt(totalProdRevenue)]],
+      columnStyles: { 1: { halign: 'center' }, 2: { halign: 'right' } },
+    });
+    y = doc.lastAutoTable.finalY + 24;
   }
 
   // ── Verkäufe ──
