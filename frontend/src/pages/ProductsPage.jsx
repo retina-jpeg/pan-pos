@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { db } from '../db';
+import { deleteProductRemote } from '../sync';
 
 const DEFAULT_COLOR = '#e5e7eb';
 
@@ -45,7 +46,10 @@ export default function ProductsPage() {
 
   async function deleteProduct(id) {
     if (!confirm('Produkt löschen?')) return;
+    const product = await db.products.get(id);
     await db.products.delete(id);
+    // Also remove from backend so it doesn't get pulled back on the next sync.
+    try { await deleteProductRemote(product?.backendId); } catch (err) { console.warn('Backend-Löschung fehlgeschlagen:', err); }
     load();
   }
 

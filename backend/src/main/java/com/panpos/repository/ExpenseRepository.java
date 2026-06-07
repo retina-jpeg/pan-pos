@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface ExpenseRepository extends JpaRepository<Expense, Long> {
     List<Expense> findByDateBetween(LocalDateTime from, LocalDateTime to);
+    List<Expense> findByLocation_Id(Long locationId);
 }

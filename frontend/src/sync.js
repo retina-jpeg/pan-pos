@@ -27,6 +27,23 @@ async function post(path, body) {
   return res.json();
 }
 
+async function del(path) {
+  const res = await fetch(`${BASE_URL}${path}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`DELETE ${path} failed: ${res.status}`);
+}
+
+// Delete a record on the backend so it is not pulled back on the next sync.
+// Best-effort: if the backend is unreachable the local delete still stands.
+export async function deleteLocationRemote(backendId) {
+  if (!backendId || !(await isBackendUp())) return;
+  await del(`/api/locations/${backendId}`);
+}
+
+export async function deleteProductRemote(backendId) {
+  if (!backendId || !(await isBackendUp())) return;
+  await del(`/api/products/${backendId}`);
+}
+
 export async function pullFromBackend() {
   if (!(await isBackendUp())) return;
 

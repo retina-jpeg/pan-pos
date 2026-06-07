@@ -1,9 +1,12 @@
 package com.panpos.controller;
 
 import com.panpos.entity.Product;
+import com.panpos.entity.SaleItem;
 import com.panpos.repository.ProductRepository;
+import com.panpos.repository.SaleItemRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -12,7 +15,8 @@ import java.util.List;
 @RequestMapping("/api/products")
 public class ProductController {
 
-    @Autowired private ProductRepository repo;
+    @Autowired private ProductRepository  repo;
+    @Autowired private SaleItemRepository saleItemRepo;
 
     @GetMapping
     public List<Product> getAll() {
@@ -38,7 +42,12 @@ public class ProductController {
     }
 
     @DeleteMapping("/{id}")
+    @Transactional
     public void delete(@PathVariable Long id) {
+        // Keep past sale history intact: detach the product from its sale items, then delete it.
+        List<SaleItem> items = saleItemRepo.findByProduct_Id(id);
+        for (SaleItem item : items) item.setProduct(null);
+        saleItemRepo.saveAll(items);
         repo.deleteById(id);
     }
 }
