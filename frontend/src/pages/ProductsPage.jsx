@@ -16,7 +16,11 @@ export default function ProductsPage() {
     setProducts(await db.products.toArray());
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    window.addEventListener('pos-synced', load);
+    return () => window.removeEventListener('pos-synced', load);
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();

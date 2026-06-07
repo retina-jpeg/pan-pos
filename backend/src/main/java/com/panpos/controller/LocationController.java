@@ -5,6 +5,7 @@ import com.panpos.repository.LocationRepository;
 import com.panpos.repository.SaleRepository;
 import com.panpos.repository.ExpenseRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
@@ -25,6 +26,16 @@ public class LocationController {
     @PostMapping
     public Location create(@RequestBody Location location) {
         return repo.save(location);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<Location> update(@PathVariable Long id, @RequestBody Location body) {
+        return repo.findById(id).map(l -> {
+            l.setName(body.getName());
+            l.setClosed(body.getClosed());
+            l.setClosedAt(body.getClosedAt());
+            return ResponseEntity.ok(repo.save(l));
+        }).orElse(ResponseEntity.notFound().build());
     }
 
     @DeleteMapping("/{id}")

@@ -1,10 +1,12 @@
 package com.panpos.controller;
 
 import com.panpos.dto.ExpenseRequest;
+import com.panpos.dto.ExpenseResponse;
 import com.panpos.entity.Expense;
 import com.panpos.repository.ExpenseRepository;
 import com.panpos.repository.LocationRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -17,8 +19,17 @@ public class ExpenseController {
     @Autowired private LocationRepository locationRepo;
 
     @GetMapping
-    public List<Expense> getAll() {
-        return repo.findAll();
+    @Transactional(readOnly = true)
+    public List<ExpenseResponse> getAll() {
+        return repo.findAll().stream().map(e -> new ExpenseResponse(
+            e.getId(),
+            e.getAmount(),
+            e.getCategory(),
+            e.getLocation() != null ? e.getLocation().getId() : null,
+            e.getNote(),
+            e.getDate(),
+            e.getCreatedAt()
+        )).toList();
     }
 
     @PostMapping

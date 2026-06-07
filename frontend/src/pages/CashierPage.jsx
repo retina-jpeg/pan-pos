@@ -233,6 +233,14 @@ export default function CashierPage() {
 
   useEffect(() => { loadLocations(); }, []);
   useEffect(() => { if (activePazar) db.products.toArray().then(setProducts); }, [activePazar]);
+  useEffect(() => {
+    const onSync = () => {
+      loadLocations();
+      if (activePazar) db.products.toArray().then(setProducts);
+    };
+    window.addEventListener('pos-synced', onSync);
+    return () => window.removeEventListener('pos-synced', onSync);
+  }, [activePazar]);
 
   const filtered = locations.filter(loc => {
     const bound = getDateBound(filter);

@@ -21,7 +21,11 @@ export default function GelirlerPage() {
     setSales(withItems);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    window.addEventListener('pos-synced', load);
+    return () => window.removeEventListener('pos-synced', load);
+  }, []);
 
   const locName = (id) => locations.find(l => l.id === id)?.name ?? '';
 

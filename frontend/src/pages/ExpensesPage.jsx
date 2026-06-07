@@ -44,6 +44,11 @@ export default function ExpensesPage() {
 
   useEffect(() => { load(); }, []);
   useEffect(() => { loadWareneinsatz(wFrom, wTo); }, [wFrom, wTo]);
+  useEffect(() => {
+    const onSync = () => { load(); loadWareneinsatz(wFrom, wTo); };
+    window.addEventListener('pos-synced', onSync);
+    return () => window.removeEventListener('pos-synced', onSync);
+  }, [wFrom, wTo]);
 
   async function handleSubmit(e) {
     e.preventDefault();

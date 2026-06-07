@@ -1,7 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
-import { seedDefaultData } from './db';
-import { pullFromBackend } from './sync';
 import { runAutoSync } from './autoSync';
 import NavBar from './components/NavBar';
 import CashierPage   from './pages/CashierPage';
@@ -12,11 +10,15 @@ import GelirlerPage  from './pages/GelirlerPage';
 
 export default function App() {
   useEffect(() => {
-    pullFromBackend().then(() => seedDefaultData()).then(() => runAutoSync());
+    runAutoSync();
     window.addEventListener('online', runAutoSync);
-    const interval = setInterval(runAutoSync, 5 * 60 * 1000);
+    // Pull/push every minute so the two devices stay in sync while open.
+    const interval = setInterval(runAutoSync, 60 * 1000);
+    const onVisible = () => { if (document.visibilityState === 'visible') runAutoSync(); };
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       window.removeEventListener('online', runAutoSync);
+      document.removeEventListener('visibilitychange', onVisible);
       clearInterval(interval);
     };
   }, []);

@@ -1,4 +1,4 @@
-import { syncAll, countUnsynced } from './sync';
+import { syncAll, countUnsynced, pullFromBackend } from './sync';
 import { useSyncStore } from './syncStore';
 
 let syncing = false;
@@ -6,16 +6,9 @@ let syncing = false;
 export async function runAutoSync() {
   const { setStatus, setPending } = useSyncStore.getState();
 
-  const pending = await countUnsynced();
-  setPending(pending);
-
   if (!navigator.onLine) {
     setStatus('offline');
-    return;
-  }
-
-  if (pending === 0) {
-    setStatus('synced');
+    setPending(await countUnsynced());
     return;
   }
 
@@ -24,10 +17,16 @@ export async function runAutoSync() {
   setStatus('syncing');
 
   try {
+    // Pull remote changes down first, then push local changes up.
+    const changed = await pullFromBackend();
     await syncAll();
+
     const remaining = await countUnsynced();
     setPending(remaining);
     setStatus(remaining === 0 ? 'synced' : 'idle');
+
+    // Let open pages reload their data when the pull brought something new.
+    if (changed) window.dispatchEvent(new Event('pos-synced'));
   } catch (err) {
     setStatus(err.message === 'Backend nicht erreichbar' ? 'offline' : 'error');
   } finally {

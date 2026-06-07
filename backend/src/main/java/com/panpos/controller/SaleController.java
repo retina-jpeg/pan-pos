@@ -1,9 +1,12 @@
 package com.panpos.controller;
 
 import com.panpos.dto.SaleRequest;
+import com.panpos.dto.SaleResponse;
+import com.panpos.dto.SaleItemResponse;
 import com.panpos.entity.*;
 import com.panpos.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
@@ -17,8 +20,22 @@ public class SaleController {
     @Autowired private ProductRepository  productRepo;
 
     @GetMapping
-    public List<Sale> getAll() {
-        return saleRepo.findAll();
+    @Transactional(readOnly = true)
+    public List<SaleResponse> getAll() {
+        return saleRepo.findAll().stream().map(sale -> new SaleResponse(
+            sale.getId(),
+            sale.getDate(),
+            sale.getLocation() != null ? sale.getLocation().getId() : null,
+            sale.getTotal(),
+            sale.getCreatedAt(),
+            sale.getItems() == null ? List.of() : sale.getItems().stream().map(i -> new SaleItemResponse(
+                i.getProduct() != null ? i.getProduct().getId() : null,
+                i.getProductName(),
+                i.getQuantity(),
+                i.getPrice(),
+                i.getCostPrice()
+            )).toList()
+        )).toList();
     }
 
     @PostMapping

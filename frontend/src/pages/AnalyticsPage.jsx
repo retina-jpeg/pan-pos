@@ -35,7 +35,11 @@ export default function AnalyticsPage() {
   const [showPie, setShowPie]       = useState(false);
   const [pieData, setPieData]       = useState([]);
 
-  useEffect(() => { load(); }, [from, to, locFilter]);
+  useEffect(() => {
+    load();
+    window.addEventListener('pos-synced', load);
+    return () => window.removeEventListener('pos-synced', load);
+  }, [from, to, locFilter]);
 
   async function load() {
     const locs = (await db.locations.toArray()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
