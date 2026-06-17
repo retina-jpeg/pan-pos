@@ -8,6 +8,11 @@ import { db } from '../db';
 
 const PIE_COLORS = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#06b6d4', '#8b5cf6', '#ec4899', '#6b7280'];
 
+// Prices are gross (Brutto) and already include 19% MwSt.
+const MWST_RATE = 0.19;
+const nettoOf = brutto => brutto / (1 + MWST_RATE);
+const mwstOf  = brutto => brutto - nettoOf(brutto);
+
 function StatCard({ label, value, color, onClick }) {
   return (
     <div
@@ -28,7 +33,7 @@ export default function AnalyticsPage() {
   });
   const [to, setTo]               = useState(() => new Date().toISOString().slice(0, 10));
   const [locFilter, setLocFilter] = useState('');
-  const [stats, setStats]         = useState({ sales: 0, expenses: 0, artikelkosten: 0, profit: 0 });
+  const [stats, setStats]         = useState({ sales: 0, netto: 0, mwst: 0, expenses: 0, artikelkosten: 0, profit: 0 });
   const [daily, setDaily]         = useState([]);
   const [byLocation, setByLocation] = useState([]);
   const [locations, setLocations]   = useState([]);
@@ -68,7 +73,16 @@ export default function AnalyticsPage() {
     const totalSales    = sales.reduce((s, r) => s + r.total, 0);
     const totalExpenses = expenses.reduce((s, r) => s + r.amount, 0);
     const totalArtikel  = saleItems.reduce((s, i) => s + (i.costPrice ?? 0) * i.quantity, 0);
-    setStats({ sales: totalSales, expenses: totalExpenses, artikelkosten: totalArtikel, profit: totalSales - totalExpenses - totalArtikel });
+    const totalNetto    = nettoOf(totalSales);
+    const totalMwst     = totalSales - totalNetto;
+    setStats({
+      sales: totalSales,
+      netto: totalNetto,
+      mwst: totalMwst,
+      expenses: totalExpenses,
+      artikelkosten: totalArtikel,
+      profit: totalNetto - totalExpenses - totalArtikel,
+    });
 
     // Pie: expenses by category + Artikelkosten
     const catMap = {};
@@ -150,7 +164,9 @@ export default function AnalyticsPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 mb-4">
-        <StatCard label="Umsatz"         value={stats.sales}         color="text-blue-600" />
+        <StatCard label="Umsatz (Brutto)" value={stats.sales}  color="text-blue-600" />
+        <StatCard label="Netto-Umsatz"    value={stats.netto}  color="text-sky-600" />
+        <StatCard label="MwSt (19%)"      value={stats.mwst}   color="text-violet-600" />
         <StatCard
           label="Gesamtausgaben"
           value={stats.expenses}

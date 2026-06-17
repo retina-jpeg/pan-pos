@@ -30,6 +30,9 @@ function getDateBound(filter) {
   return null;
 }
 
+// Prices are gross (Brutto) and already include 19% MwSt.
+const MWST_RATE = 0.19;
+
 const fmt     = v  => `EUR ${Number(v).toFixed(2)}`;
 const fmtDate = d  => new Date(d).toLocaleDateString('de-DE', {
   day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
@@ -56,7 +59,10 @@ async function generateReport(loc, e) {
   const totalUmsatz        = sales.reduce((s, r) => s + r.total, 0);
   const totalAusgaben      = expenses.reduce((s, r) => s + r.amount, 0);
   const totalArtikelkosten = allSaleItems.reduce((s, i) => s + (i.costPrice ?? 0) * i.quantity, 0);
-  const nettogewinn        = totalUmsatz - totalAusgaben - totalArtikelkosten;
+  // Prices are gross (incl. 19% MwSt); split the Umsatz into Netto + MwSt.
+  const totalNetto         = totalUmsatz / (1 + MWST_RATE);
+  const totalMwst          = totalUmsatz - totalNetto;
+  const nettogewinn        = totalNetto - totalAusgaben - totalArtikelkosten;
 
   const prodMap = {};
   allSaleItems.forEach(si => {
@@ -96,26 +102,32 @@ async function generateReport(loc, e) {
   doc.text(meta, margin, y);
   y += 22;
 
-  // ── Summary cards ──
+  // ── Summary cards (3 per row) ──
   const cards = [
-    ['Umsatz',        fmt(totalUmsatz),        [37, 99, 235]],
-    ['Ausgaben',      fmt(totalAusgaben),      [220, 38, 38]],
-    ['Artikelkosten', fmt(totalArtikelkosten), [234, 88, 12]],
-    ['Nettogewinn',   fmt(nettogewinn),        nettogewinn >= 0 ? [5, 150, 105] : [220, 38, 38]],
+    ['Umsatz (Brutto)', fmt(totalUmsatz),        [37, 99, 235]],
+    ['Netto-Umsatz',    fmt(totalNetto),         [2, 132, 199]],
+    ['MwSt (19%)',      fmt(totalMwst),          [124, 58, 237]],
+    ['Ausgaben',        fmt(totalAusgaben),      [220, 38, 38]],
+    ['Artikelkosten',   fmt(totalArtikelkosten), [234, 88, 12]],
+    ['Nettogewinn',     fmt(nettogewinn),        nettogewinn >= 0 ? [5, 150, 105] : [220, 38, 38]],
   ];
+  const perRow = 3;
   const gap = 10;
-  const cardW = (pageW - margin * 2 - gap * 3) / 4;
+  const cardW = (pageW - margin * 2 - gap * (perRow - 1)) / perRow;
   const cardH = 50;
   cards.forEach(([lbl, val, color], i) => {
-    const x = margin + i * (cardW + gap);
+    const col = i % perRow;
+    const row = Math.floor(i / perRow);
+    const x = margin + col * (cardW + gap);
+    const cy = y + row * (cardH + gap);
     doc.setDrawColor(229, 231, 235).setFillColor(249, 250, 251);
-    doc.roundedRect(x, y, cardW, cardH, 4, 4, 'FD');
+    doc.roundedRect(x, cy, cardW, cardH, 4, 4, 'FD');
     doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(107, 114, 128);
-    doc.text(lbl, x + 10, y + 16);
+    doc.text(lbl, x + 10, cy + 16);
     doc.setFont('helvetica', 'bold').setFontSize(12).setTextColor(...color);
-    doc.text(val, x + 10, y + 36);
+    doc.text(val, x + 10, cy + 36);
   });
-  y += cardH + 24;
+  y += Math.ceil(cards.length / perRow) * (cardH + gap) - gap + 24;
 
   const tableOpts = {
     theme: 'grid',
