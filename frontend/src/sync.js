@@ -54,20 +54,54 @@ export async function deleteProductRemote(backendId) {
   await del(`/api/products/${backendId}`);
 }
 
+export async function deleteCategoryRemote(backendId) {
+  if (!backendId || !(await isBackendUp())) return;
+  await del(`/api/categories/${backendId}`);
+}
+
 // ── PULL: bring remote data down into the local DB (locations, products, sales, expenses).
 // Records are matched to their backend counterpart via `backendId` to avoid duplicates.
 // Returns true if any local data was added/updated (so the UI can refresh).
 export async function pullFromBackend() {
   if (!(await isBackendUp())) return false;
 
-  const [serverLocs, serverProds, serverSales, serverExps] = await Promise.all([
+  const [serverLocs, serverCats, serverProds, serverSales, serverExps] = await Promise.all([
     get('/api/locations'),
+    get('/api/categories'),
     get('/api/products'),
     get('/api/sales'),
     get('/api/expenses'),
   ]);
 
   let changed = false;
+
+  // ── Categories ──
+  const localCats    = await db.categories.toArray();
+  const catByBackend = new Map();
+  localCats.forEach(c => { if (c.backendId) catByBackend.set(c.backendId, c); });
+  for (const cat of serverCats) {
+    const existing = catByBackend.get(cat.id);
+    if (!existing) {
+      const newId = await db.categories.add({
+        name: cat.name,
+        sortOrder: cat.sortOrder ?? 0,
+        createdAt: cat.createdAt,
+        synced: true,
+        backendId: cat.id,
+      });
+      catByBackend.set(cat.id, { id: newId, backendId: cat.id });
+      changed = true;
+    } else if (existing.synced) {
+      if (existing.name !== cat.name || (existing.sortOrder ?? 0) !== (cat.sortOrder ?? 0)) {
+        await db.categories.update(existing.id, {
+          name: cat.name,
+          sortOrder: cat.sortOrder ?? 0,
+        });
+        changed = true;
+      }
+    }
+  }
+  const catLocalId = id => (id == null ? null : catByBackend.get(id)?.id ?? null);
 
   // ── Locations ──
   const localLocs   = await db.locations.toArray();
@@ -105,11 +139,13 @@ export async function pullFromBackend() {
   localProds.forEach(p => { if (p.backendId) prodByBackend.set(p.backendId, p); });
   for (const prod of serverProds) {
     const existing = prodByBackend.get(prod.id);
+    const localCategoryId = catLocalId(prod.categoryId);
     if (!existing) {
       const newId = await db.products.add({
         name: prod.name,
         price: prod.price,
         einkaufspreis: prod.costPrice ?? null,
+        categoryId: localCategoryId,
         createdAt: prod.createdAt,
         synced: true,
         backendId: prod.id,
@@ -119,11 +155,13 @@ export async function pullFromBackend() {
     } else if (existing.synced) {
       if (existing.name !== prod.name ||
           existing.price !== prod.price ||
-          (existing.einkaufspreis ?? null) !== (prod.costPrice ?? null)) {
+          (existing.einkaufspreis ?? null) !== (prod.costPrice ?? null) ||
+          (existing.categoryId ?? null) !== (localCategoryId ?? null)) {
         await db.products.update(existing.id, {
           name: prod.name,
           price: prod.price,
           einkaufspreis: prod.costPrice ?? null,
+          categoryId: localCategoryId,
         });
         changed = true;
       }
@@ -228,11 +266,34 @@ export async function syncAll(onProgress) {
   const locMap = {};
   allLocs.forEach(l => { if (l.backendId) locMap[l.id] = l.backendId; });
 
-  // 2. Products — update if already on backend, otherwise create.
+  // 2. Categories — update if already on backend, otherwise create.
+  onProgress?.('Kategorien werden synchronisiert...');
+  const unsyncedCats = await db.categories.filter(c => !c.synced).toArray();
+  for (const cat of unsyncedCats) {
+    const body = { name: cat.name, sortOrder: cat.sortOrder ?? 0 };
+    if (cat.backendId) {
+      await put(`/api/categories/${cat.backendId}`, body);
+      await db.categories.update(cat.id, { synced: true });
+    } else {
+      const data = await post('/api/categories', { ...body, createdAt: cat.createdAt });
+      await db.categories.update(cat.id, { synced: true, backendId: data.id });
+    }
+  }
+
+  const allCats = await db.categories.toArray();
+  const catMap = {};
+  allCats.forEach(c => { if (c.backendId) catMap[c.id] = c.backendId; });
+
+  // 3. Products — update if already on backend, otherwise create.
   onProgress?.('Produkte werden synchronisiert...');
   const unsyncedProds = await db.products.filter(p => !p.synced).toArray();
   for (const prod of unsyncedProds) {
-    const body = { name: prod.name, price: prod.price, costPrice: prod.einkaufspreis ?? null };
+    const body = {
+      name: prod.name,
+      price: prod.price,
+      costPrice: prod.einkaufspreis ?? null,
+      categoryId: prod.categoryId != null ? (catMap[prod.categoryId] ?? null) : null,
+    };
     if (prod.backendId) {
       await put(`/api/products/${prod.backendId}`, body);
       await db.products.update(prod.id, { synced: true });
@@ -246,7 +307,7 @@ export async function syncAll(onProgress) {
   const prodMap = {};
   allProds.forEach(p => { if (p.backendId) prodMap[p.id] = p.backendId; });
 
-  // 3. Sales
+  // 4. Sales
   onProgress?.('Verkäufe werden synchronisiert...');
   const unsyncedSales = await db.sales.filter(s => !s.synced).toArray();
   for (const sale of unsyncedSales) {
@@ -269,7 +330,7 @@ export async function syncAll(onProgress) {
     await db.sales.update(sale.id, { synced: true, backendId: data.id });
   }
 
-  // 4. Expenses
+  // 5. Expenses
   onProgress?.('Ausgaben werden synchronisiert...');
   const unsyncedExps = await db.expenses.filter(e => !e.synced).toArray();
   for (const exp of unsyncedExps) {
@@ -290,11 +351,12 @@ export async function syncAll(onProgress) {
 }
 
 export async function countUnsynced() {
-  const [locs, prods, sales, exps] = await Promise.all([
+  const [locs, cats, prods, sales, exps] = await Promise.all([
     db.locations.filter(r => !r.synced).count(),
+    db.categories.filter(r => !r.synced).count(),
     db.products.filter(r => !r.synced).count(),
     db.sales.filter(r => !r.synced).count(),
     db.expenses.filter(r => !r.synced).count(),
   ]);
-  return locs + prods + sales + exps;
+  return locs + cats + prods + sales + exps;
 }

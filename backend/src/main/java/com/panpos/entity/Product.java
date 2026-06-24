@@ -18,6 +18,8 @@ public class Product {
 
     private Double costPrice;
 
+    private Long categoryId;
+
     private LocalDateTime createdAt = LocalDateTime.now();
     private LocalDateTime updatedAt = LocalDateTime.now();
 
@@ -32,6 +34,9 @@ public class Product {
 
     public Double getCostPrice() { return costPrice; }
     public void setCostPrice(Double costPrice) { this.costPrice = costPrice; }
+
+    public Long getCategoryId() { return categoryId; }
+    public void setCategoryId(Long categoryId) { this.categoryId = categoryId; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

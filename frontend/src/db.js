@@ -14,4 +14,9 @@ db.version(2).stores({
   locations: '++id, name, synced, closed',
 });
 
+db.version(3).stores({
+  categories: '++id, name, sortOrder, synced',
+  products:   '++id, name, price, synced, categoryId',
+});
+
 export async function seedDefaultData() {}

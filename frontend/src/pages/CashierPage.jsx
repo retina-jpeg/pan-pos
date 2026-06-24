@@ -231,6 +231,8 @@ export default function CashierPage() {
   const [expenses, setExpenses]       = useState({});
 
   const [products, setProducts]       = useState([]);
+  const [categories, setCategories]   = useState([]);
+  const [activeCategory, setActiveCategory] = useState(null); // category id, '__none__', or null (= show categories)
   const [lastSale, setLastSale]       = useState(null);
   const [editingItem, setEditingItem] = useState(null);
 
@@ -243,12 +245,17 @@ export default function CashierPage() {
     );
   }
 
+  function loadCatalog() {
+    db.products.toArray().then(setProducts);
+    db.categories.orderBy('sortOrder').toArray().then(setCategories);
+  }
+
   useEffect(() => { loadLocations(); }, []);
-  useEffect(() => { if (activePazar) db.products.toArray().then(setProducts); }, [activePazar]);
+  useEffect(() => { if (activePazar) loadCatalog(); }, [activePazar]);
   useEffect(() => {
     const onSync = () => {
       loadLocations();
-      if (activePazar) db.products.toArray().then(setProducts);
+      if (activePazar) loadCatalog();
     };
     window.addEventListener('pos-synced', onSync);
     return () => window.removeEventListener('pos-synced', onSync);
@@ -285,11 +292,13 @@ export default function CashierPage() {
 
   function selectPazar(loc) {
     setLocation(loc.id);
+    setActiveCategory(null);
     setActivePazar(loc);
   }
 
   function goBack() {
     clearCart();
+    setActiveCategory(null);
     setActivePazar(null);
     loadLocations();
   }
@@ -458,6 +467,62 @@ export default function CashierPage() {
   }
 
   // ── CASHIER ──────────────────────────────────────────────────────────────
+  // Category-first navigation: show categories, then the products under one.
+  const validCatIds   = new Set(categories.map(c => c.id));
+  const isUncategorized = p => p.categoryId == null || !validCatIds.has(p.categoryId);
+  const hasUncategorized = products.some(isUncategorized);
+  const useCategories = categories.length > 0;
+  const visibleProducts = !useCategories
+    ? products
+    : activeCategory === '__none__'
+      ? products.filter(isUncategorized)
+      : products.filter(p => p.categoryId === activeCategory);
+  const countIn = cat =>
+    cat === '__none__' ? products.filter(isUncategorized).length
+                       : products.filter(p => p.categoryId === cat.id).length;
+
+  const productTile = (product) => {
+    const cartItem = items.find(i => i.product.id === product.id);
+    const colored = product.color && product.color !== '#e5e7eb';
+    return (
+      <button key={product.id} onClick={() => addItem(product)}
+        className={`relative rounded-2xl p-4 min-h-[90px] flex flex-col items-center justify-center text-center shadow-sm border-2 transition-all active:scale-95 ${
+          cartItem ? 'border-white/70' : 'border-transparent'
+        }`}
+        style={{ backgroundColor: product.color || '#e5e7eb' }}
+      >
+        {cartItem && (
+          <span className="absolute top-2 right-2 bg-white/90 text-gray-900 text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center">
+            {cartItem.quantity}
+          </span>
+        )}
+        <div className={`font-bold text-base leading-tight ${colored ? 'text-white' : 'text-gray-800'}`}>
+          {product.name}
+        </div>
+        <div className={`font-bold text-xl mt-1 ${colored ? 'text-white/90' : 'text-emerald-600'}`}>
+          €{product.price}
+        </div>
+      </button>
+    );
+  };
+
+  const rabattTile = (
+    <button
+      key="__rabatt__"
+      onClick={() => setEditingItem('__rabatt__')}
+      className={`relative bg-red-50 rounded-2xl p-4 min-h-[90px] flex flex-col items-center justify-center text-center shadow-sm border-2 transition-all active:scale-95 ${
+        items.find(i => i.product.id === '__rabatt__') ? 'border-red-400' : 'border-transparent'
+      }`}
+    >
+      <div className="font-bold text-red-600 text-base leading-tight">Rabatt</div>
+      <div className="text-red-400 font-bold text-xl mt-1">
+        {items.find(i => i.product.id === '__rabatt__')
+          ? `−€${Math.abs(items.find(i => i.product.id === '__rabatt__').price)}`
+          : '−€'}
+      </div>
+    </button>
+  );
+
   return (
     <div className="flex flex-col lg:flex-row h-full">
 
@@ -490,46 +555,40 @@ export default function CashierPage() {
               <p className="text-lg mt-2">Noch keine Produkte hinzugefügt</p>
               <p className="text-sm mt-1">Produkte auf der Produkte-Seite hinzufügen</p>
             </div>
-          ) : (
+          ) : useCategories && activeCategory === null ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {products.map(product => {
-                const cartItem = items.find(i => i.product.id === product.id);
-                const colored = product.color && product.color !== '#e5e7eb';
-                return (
-                  <button key={product.id} onClick={() => addItem(product)}
-                    className={`relative rounded-2xl p-4 min-h-[90px] flex flex-col items-center justify-center text-center shadow-sm border-2 transition-all active:scale-95 ${
-                      cartItem ? 'border-white/70' : 'border-transparent'
-                    }`}
-                    style={{ backgroundColor: product.color || '#e5e7eb' }}
-                  >
-                    {cartItem && (
-                      <span className="absolute top-2 right-2 bg-white/90 text-gray-900 text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center">
-                        {cartItem.quantity}
-                      </span>
-                    )}
-                    <div className={`font-bold text-base leading-tight ${colored ? 'text-white' : 'text-gray-800'}`}>
-                      {product.name}
-                    </div>
-                    <div className={`font-bold text-xl mt-1 ${colored ? 'text-white/90' : 'text-emerald-600'}`}>
-                      €{product.price}
-                    </div>
-                  </button>
-                );
-              })}
-              <button
-                onClick={() => setEditingItem('__rabatt__')}
-                className={`relative bg-red-50 rounded-2xl p-4 min-h-[90px] flex flex-col items-center justify-center text-center shadow-sm border-2 transition-all active:scale-95 ${
-                  items.find(i => i.product.id === '__rabatt__') ? 'border-red-400' : 'border-transparent'
-                }`}
-              >
-                <div className="font-bold text-red-600 text-base leading-tight">Rabatt</div>
-                <div className="text-red-400 font-bold text-xl mt-1">
-                  {items.find(i => i.product.id === '__rabatt__')
-                    ? `−€${Math.abs(items.find(i => i.product.id === '__rabatt__').price)}`
-                    : '−€'}
-                </div>
-              </button>
+              {categories.map(cat => (
+                <button key={cat.id} onClick={() => setActiveCategory(cat.id)}
+                  className="rounded-2xl p-4 min-h-[90px] flex flex-col items-center justify-center text-center shadow-sm bg-white border-2 border-transparent active:scale-95 transition-all"
+                >
+                  <div className="font-bold text-base text-gray-800 leading-tight">{cat.name}</div>
+                  <div className="text-sm text-gray-400 mt-1">{countIn(cat)} Artikel</div>
+                </button>
+              ))}
+              {hasUncategorized && (
+                <button onClick={() => setActiveCategory('__none__')}
+                  className="rounded-2xl p-4 min-h-[90px] flex flex-col items-center justify-center text-center shadow-sm bg-white border-2 border-dashed border-gray-200 active:scale-95 transition-all"
+                >
+                  <div className="font-bold text-base text-gray-500 leading-tight">Ohne Kategorie</div>
+                  <div className="text-sm text-gray-400 mt-1">{countIn('__none__')} Artikel</div>
+                </button>
+              )}
             </div>
+          ) : (
+            <>
+              {useCategories && (
+                <button onClick={() => setActiveCategory(null)}
+                  className="mb-3 px-4 py-2 bg-white text-gray-600 rounded-xl text-sm font-medium shadow-sm active:bg-gray-100"
+                >‹ Kategorien</button>
+              )}
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                {visibleProducts.map(productTile)}
+                {rabattTile}
+              </div>
+              {visibleProducts.length === 0 && (
+                <p className="text-center text-gray-400 py-8">Keine Produkte in dieser Kategorie</p>
+              )}
+            </>
           )}
         </div>
       </div>
