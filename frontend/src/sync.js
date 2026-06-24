@@ -17,6 +17,18 @@ async function get(path) {
   return res.json();
 }
 
+// Like get(), but never throws: returns `fallback` if the endpoint is missing or
+// errors. Keeps one broken resource (e.g. an outdated backend) from aborting the
+// whole sync.
+async function getSafe(path, fallback) {
+  try {
+    return await get(path);
+  } catch (err) {
+    console.warn(`Pull übersprungen: ${path} (${err.message})`);
+    return fallback;
+  }
+}
+
 async function post(path, body) {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
@@ -66,20 +78,23 @@ export async function pullFromBackend() {
   if (!(await isBackendUp())) return false;
 
   const [serverLocs, serverCats, serverProds, serverSales, serverExps] = await Promise.all([
-    get('/api/locations'),
-    get('/api/categories'),
-    get('/api/products'),
-    get('/api/sales'),
-    get('/api/expenses'),
+    getSafe('/api/locations', null),
+    getSafe('/api/categories', null),
+    getSafe('/api/products', null),
+    getSafe('/api/sales', null),
+    getSafe('/api/expenses', null),
   ]);
 
   let changed = false;
+  // Whether categories were actually fetched. If not (e.g. backend not updated yet),
+  // we must NOT touch local category assignments — they live only locally for now.
+  const catsOk = Array.isArray(serverCats);
 
   // ── Categories ──
   const localCats    = await db.categories.toArray();
   const catByBackend = new Map();
   localCats.forEach(c => { if (c.backendId) catByBackend.set(c.backendId, c); });
-  for (const cat of serverCats) {
+  for (const cat of (serverCats ?? [])) {
     const existing = catByBackend.get(cat.id);
     if (!existing) {
       const newId = await db.categories.add({
@@ -107,7 +122,7 @@ export async function pullFromBackend() {
   const localLocs   = await db.locations.toArray();
   const locByBackend = new Map();
   localLocs.forEach(l => { if (l.backendId) locByBackend.set(l.backendId, l); });
-  for (const loc of serverLocs) {
+  for (const loc of (serverLocs ?? [])) {
     const existing = locByBackend.get(loc.id);
     if (!existing) {
       const newId = await db.locations.add({
@@ -137,15 +152,16 @@ export async function pullFromBackend() {
   const localProds    = await db.products.toArray();
   const prodByBackend = new Map();
   localProds.forEach(p => { if (p.backendId) prodByBackend.set(p.backendId, p); });
-  for (const prod of serverProds) {
+  for (const prod of (serverProds ?? [])) {
     const existing = prodByBackend.get(prod.id);
-    const localCategoryId = catLocalId(prod.categoryId);
+    const localCategoryId = catsOk ? catLocalId(prod.categoryId) : undefined;
     if (!existing) {
       const newId = await db.products.add({
         name: prod.name,
         price: prod.price,
         einkaufspreis: prod.costPrice ?? null,
-        categoryId: localCategoryId,
+        // Only set category from server when categories were fetched.
+        ...(catsOk ? { categoryId: localCategoryId } : {}),
         createdAt: prod.createdAt,
         synced: true,
         backendId: prod.id,
@@ -153,16 +169,18 @@ export async function pullFromBackend() {
       prodByBackend.set(prod.id, { id: newId, backendId: prod.id });
       changed = true;
     } else if (existing.synced) {
+      const catChanged = catsOk && (existing.categoryId ?? null) !== (localCategoryId ?? null);
       if (existing.name !== prod.name ||
           existing.price !== prod.price ||
           (existing.einkaufspreis ?? null) !== (prod.costPrice ?? null) ||
-          (existing.categoryId ?? null) !== (localCategoryId ?? null)) {
-        await db.products.update(existing.id, {
+          catChanged) {
+        const upd = {
           name: prod.name,
           price: prod.price,
           einkaufspreis: prod.costPrice ?? null,
-          categoryId: localCategoryId,
-        });
+        };
+        if (catsOk) upd.categoryId = localCategoryId;  // preserve local category if backend lacks it
+        await db.products.update(existing.id, upd);
         changed = true;
       }
     }
@@ -175,7 +193,7 @@ export async function pullFromBackend() {
   // ── Sales (+ items) ──
   const localSales    = await db.sales.toArray();
   const saleBackendIds = new Set(localSales.map(s => s.backendId).filter(Boolean));
-  for (const sale of serverSales) {
+  for (const sale of (serverSales ?? [])) {
     if (saleBackendIds.has(sale.id)) continue;
     const newSaleId = await db.sales.add({
       date: sale.date,
@@ -207,7 +225,7 @@ export async function pullFromBackend() {
   localExps.filter(e => !e.backendId).forEach(e => {
     legacyExps.set(`${e.locationId}|${e.category}|${e.amount}`, e);
   });
-  for (const exp of serverExps) {
+  for (const exp of (serverExps ?? [])) {
     if (expBackendIds.has(exp.id)) continue;
     const localLoc = locLocalId(exp.locationId);
     const key = `${localLoc}|${exp.category}|${exp.amount}`;
@@ -267,17 +285,22 @@ export async function syncAll(onProgress) {
   allLocs.forEach(l => { if (l.backendId) locMap[l.id] = l.backendId; });
 
   // 2. Categories — update if already on backend, otherwise create.
+  // Skipped gracefully if the backend has no /api/categories yet (older build).
   onProgress?.('Kategorien werden synchronisiert...');
   const unsyncedCats = await db.categories.filter(c => !c.synced).toArray();
-  for (const cat of unsyncedCats) {
-    const body = { name: cat.name, sortOrder: cat.sortOrder ?? 0 };
-    if (cat.backendId) {
-      await put(`/api/categories/${cat.backendId}`, body);
-      await db.categories.update(cat.id, { synced: true });
-    } else {
-      const data = await post('/api/categories', { ...body, createdAt: cat.createdAt });
-      await db.categories.update(cat.id, { synced: true, backendId: data.id });
+  try {
+    for (const cat of unsyncedCats) {
+      const body = { name: cat.name, sortOrder: cat.sortOrder ?? 0 };
+      if (cat.backendId) {
+        await put(`/api/categories/${cat.backendId}`, body);
+        await db.categories.update(cat.id, { synced: true });
+      } else {
+        const data = await post('/api/categories', { ...body, createdAt: cat.createdAt });
+        await db.categories.update(cat.id, { synced: true, backendId: data.id });
+      }
     }
+  } catch (err) {
+    console.warn(`Kategorien-Sync übersprungen (${err.message})`);
   }
 
   const allCats = await db.categories.toArray();
