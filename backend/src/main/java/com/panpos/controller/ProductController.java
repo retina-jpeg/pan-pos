@@ -36,7 +36,7 @@ public class ProductController {
             p.setName(body.getName());
             p.setPrice(body.getPrice());
             p.setCostPrice(body.getCostPrice());
-            p.setCategoryId(body.getCategoryId());
+            p.setCategoryIds(body.getCategoryIds());
             p.setUpdatedAt(LocalDateTime.now());
             return ResponseEntity.ok(repo.save(p));
         }).orElse(ResponseEntity.notFound().build());

@@ -2,6 +2,8 @@ package com.panpos.entity;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "products")
@@ -18,7 +20,10 @@ public class Product {
 
     private Double costPrice;
 
-    private Long categoryId;
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "product_categories", joinColumns = @JoinColumn(name = "product_id"))
+    @Column(name = "category_id")
+    private List<Long> categoryIds = new ArrayList<>();
 
     private LocalDateTime createdAt = LocalDateTime.now();
     private LocalDateTime updatedAt = LocalDateTime.now();
@@ -35,8 +40,10 @@ public class Product {
     public Double getCostPrice() { return costPrice; }
     public void setCostPrice(Double costPrice) { this.costPrice = costPrice; }
 
-    public Long getCategoryId() { return categoryId; }
-    public void setCategoryId(Long categoryId) { this.categoryId = categoryId; }
+    public List<Long> getCategoryIds() { return categoryIds; }
+    public void setCategoryIds(List<Long> categoryIds) {
+        this.categoryIds = categoryIds != null ? categoryIds : new ArrayList<>();
+    }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

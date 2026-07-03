@@ -469,17 +469,18 @@ export default function CashierPage() {
   // ── CASHIER ──────────────────────────────────────────────────────────────
   // Category-first navigation: show categories, then the products under one.
   const validCatIds   = new Set(categories.map(c => c.id));
-  const isUncategorized = p => p.categoryId == null || !validCatIds.has(p.categoryId);
+  const inCategory = (p, catId) => (p.categoryIds ?? []).includes(catId);
+  const isUncategorized = p => !(p.categoryIds ?? []).some(id => validCatIds.has(id));
   const hasUncategorized = products.some(isUncategorized);
   const useCategories = categories.length > 0;
   const visibleProducts = !useCategories
     ? products
     : activeCategory === '__none__'
       ? products.filter(isUncategorized)
-      : products.filter(p => p.categoryId === activeCategory);
+      : products.filter(p => inCategory(p, activeCategory));
   const countIn = cat =>
     cat === '__none__' ? products.filter(isUncategorized).length
-                       : products.filter(p => p.categoryId === cat.id).length;
+                       : products.filter(p => inCategory(p, cat.id)).length;
 
   const productTile = (product) => {
     const cartItem = items.find(i => i.product.id === product.id);

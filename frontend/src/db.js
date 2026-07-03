@@ -19,4 +19,16 @@ db.version(3).stores({
   products:   '++id, name, price, synced, categoryId',
 });
 
+// A product can belong to multiple categories: categoryId (single) → categoryIds (array).
+db.version(4).stores({
+  products: '++id, name, price, synced, *categoryIds',
+}).upgrade(async tx => {
+  await tx.table('products').toCollection().modify(p => {
+    if (p.categoryIds == null) {
+      p.categoryIds = (p.categoryId != null) ? [p.categoryId] : [];
+    }
+    delete p.categoryId;
+  });
+});
+
 export async function seedDefaultData() {}

@@ -2,6 +2,13 @@ import { db } from './db';
 
 export const BASE_URL = import.meta.env.VITE_API_URL ?? '';
 
+// Compare two id arrays regardless of order.
+function sameIds(a, b) {
+  const x = [...(a ?? [])].sort();
+  const y = [...(b ?? [])].sort();
+  return x.length === y.length && x.every((v, i) => v === y[i]);
+}
+
 async function isBackendUp() {
   try {
     const res = await fetch(`${BASE_URL}/api/locations`, { signal: AbortSignal.timeout(3000) });
@@ -154,14 +161,16 @@ export async function pullFromBackend() {
   localProds.forEach(p => { if (p.backendId) prodByBackend.set(p.backendId, p); });
   for (const prod of (serverProds ?? [])) {
     const existing = prodByBackend.get(prod.id);
-    const localCategoryId = catsOk ? catLocalId(prod.categoryId) : undefined;
+    // Map the server's category ids to local ids (only when categories were fetched).
+    const localCategoryIds = catsOk
+      ? (prod.categoryIds ?? []).map(catLocalId).filter(v => v != null)
+      : undefined;
     if (!existing) {
       const newId = await db.products.add({
         name: prod.name,
         price: prod.price,
         einkaufspreis: prod.costPrice ?? null,
-        // Only set category from server when categories were fetched.
-        ...(catsOk ? { categoryId: localCategoryId } : {}),
+        categoryIds: catsOk ? localCategoryIds : [],
         createdAt: prod.createdAt,
         synced: true,
         backendId: prod.id,
@@ -169,7 +178,7 @@ export async function pullFromBackend() {
       prodByBackend.set(prod.id, { id: newId, backendId: prod.id });
       changed = true;
     } else if (existing.synced) {
-      const catChanged = catsOk && (existing.categoryId ?? null) !== (localCategoryId ?? null);
+      const catChanged = catsOk && !sameIds(existing.categoryIds, localCategoryIds);
       if (existing.name !== prod.name ||
           existing.price !== prod.price ||
           (existing.einkaufspreis ?? null) !== (prod.costPrice ?? null) ||
@@ -179,7 +188,7 @@ export async function pullFromBackend() {
           price: prod.price,
           einkaufspreis: prod.costPrice ?? null,
         };
-        if (catsOk) upd.categoryId = localCategoryId;  // preserve local category if backend lacks it
+        if (catsOk) upd.categoryIds = localCategoryIds;  // preserve local categories if backend lacks them
         await db.products.update(existing.id, upd);
         changed = true;
       }
@@ -315,7 +324,7 @@ export async function syncAll(onProgress) {
       name: prod.name,
       price: prod.price,
       costPrice: prod.einkaufspreis ?? null,
-      categoryId: prod.categoryId != null ? (catMap[prod.categoryId] ?? null) : null,
+      categoryIds: (prod.categoryIds ?? []).map(id => catMap[id]).filter(v => v != null),
     };
     if (prod.backendId) {
       await put(`/api/products/${prod.backendId}`, body);

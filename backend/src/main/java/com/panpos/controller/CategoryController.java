@@ -39,9 +39,9 @@ public class CategoryController {
     @DeleteMapping("/{id}")
     @Transactional
     public void delete(@PathVariable Long id) {
-        // Products in this category become uncategorized rather than being deleted.
+        // Remove this category from any products that reference it, then delete it.
         List<Product> products = productRepo.findByCategoryId(id);
-        for (Product p : products) p.setCategoryId(null);
+        for (Product p : products) p.getCategoryIds().remove(id);
         productRepo.saveAll(products);
         repo.deleteById(id);
     }

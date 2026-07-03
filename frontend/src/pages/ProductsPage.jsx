@@ -5,20 +5,27 @@ import { deleteProductRemote, deleteCategoryRemote } from '../sync';
 const DEFAULT_COLOR = '#e5e7eb';
 const ROW_H = 56;
 
-// ── Category picker / manager (assign, create, reorder, delete) ──
+// ── Multi-select category picker / manager (assign, create, reorder, delete) ──
 function CategoryPicker({ product, categories, onClose, onChanged }) {
-  const [list, setList]       = useState(categories);
-  const [newName, setNewName] = useState('');
-  const [dragId, setDragId]   = useState(null);
+  const [list, setList]         = useState(categories);
+  const [selected, setSelected] = useState(product.categoryIds ?? []);
+  const [newName, setNewName]   = useState('');
+  const [dragId, setDragId]     = useState(null);
   const listRef = useRef(null);
   const dragRef = useRef(null);
 
   useEffect(() => { setList(categories); }, [categories]);
 
-  async function assign(categoryId) {
-    await db.products.update(product.id, { categoryId, synced: false, updatedAt: new Date().toISOString() });
+  async function persistSelection(next) {
+    setSelected(next);
+    await db.products.update(product.id, { categoryIds: next, synced: false, updatedAt: new Date().toISOString() });
     onChanged();
-    onClose();
+  }
+
+  function toggle(catId) {
+    persistSelection(
+      selected.includes(catId) ? selected.filter(id => id !== catId) : [...selected, catId]
+    );
   }
 
   async function createCategory() {
@@ -28,18 +35,19 @@ function CategoryPicker({ product, categories, onClose, onChanged }) {
     const now = new Date().toISOString();
     const id = await db.categories.add({ name, sortOrder: maxOrder + 1, createdAt: now, synced: false });
     setNewName('');
-    await db.products.update(product.id, { categoryId: id, synced: false, updatedAt: now });
-    onChanged();
-    onClose();
+    await persistSelection([...selected, id]);
   }
 
   async function deleteCategory(cat, e) {
     e.stopPropagation();
-    if (!confirm(`Kategorie "${cat.name}" löschen? Produkte werden ohne Kategorie.`)) return;
-    const affected = await db.products.where('categoryId').equals(cat.id).toArray();
-    await Promise.all(affected.map(p => db.products.update(p.id, { categoryId: null, synced: false })));
+    if (!confirm(`Kategorie "${cat.name}" löschen? Sie wird von allen Produkten entfernt.`)) return;
+    const affected = await db.products.where('categoryIds').equals(cat.id).toArray();
+    await Promise.all(affected.map(p => db.products.update(p.id, {
+      categoryIds: (p.categoryIds ?? []).filter(id => id !== cat.id), synced: false,
+    })));
     await db.categories.delete(cat.id);
     try { await deleteCategoryRemote(cat.backendId); } catch (err) { console.warn('Kategorie-Löschung fehlgeschlagen:', err); }
+    setSelected(prev => prev.filter(id => id !== cat.id));
     onChanged();
   }
 
@@ -84,7 +92,7 @@ function CategoryPicker({ product, categories, onClose, onChanged }) {
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-4 border-b border-gray-100">
-          <h2 className="text-lg font-bold text-gray-800">Kategorie</h2>
+          <h2 className="text-lg font-bold text-gray-800">Kategorien</h2>
           <button onClick={onClose} className="text-gray-400 text-2xl leading-none px-1">×</button>
         </div>
 
@@ -102,44 +110,41 @@ function CategoryPicker({ product, categories, onClose, onChanged }) {
           >+ Neu</button>
         </div>
 
-        <button
-          onClick={() => assign(null)}
-          className="flex items-center gap-3 px-4 border-b border-gray-100 active:bg-gray-50 shrink-0"
-          style={{ height: ROW_H }}
-        >
-          <span className="w-4" />
-          <span className={`flex-1 text-left ${product.categoryId == null ? 'font-bold text-emerald-600' : 'text-gray-500'}`}>
-            Keine Kategorie
-          </span>
-          {product.categoryId == null && <span className="text-emerald-600">✓</span>}
-        </button>
-
-        <div ref={listRef} className="overflow-y-auto">
-          {list.map(cat => (
-            <div
-              key={cat.id}
-              className={`flex items-center gap-2 px-4 ${dragId === cat.id ? 'bg-emerald-50' : ''}`}
-              style={{ height: ROW_H }}
-            >
-              <span
-                onPointerDown={e => onHandleDown(e, cat.id)}
-                onPointerMove={onHandleMove}
-                onPointerUp={onHandleUp}
-                className="text-gray-400 text-xl cursor-grab select-none px-1"
-                style={{ touchAction: 'none' }}
-              >⠿</span>
-              <button onClick={() => assign(cat.id)} className="flex-1 text-left truncate">
-                <span className={product.categoryId === cat.id ? 'font-bold text-emerald-600' : 'text-gray-800'}>
-                  {cat.name}
-                </span>
-              </button>
-              {product.categoryId === cat.id && <span className="text-emerald-600">✓</span>}
-              <button onClick={e => deleteCategory(cat, e)} className="text-gray-300 hover:text-red-500 text-lg px-1 leading-none">×</button>
-            </div>
-          ))}
+        <div ref={listRef} className="overflow-y-auto flex-1">
+          {list.map(cat => {
+            const on = selected.includes(cat.id);
+            return (
+              <div
+                key={cat.id}
+                className={`flex items-center gap-2 px-4 ${dragId === cat.id ? 'bg-emerald-50' : ''}`}
+                style={{ height: ROW_H }}
+              >
+                <span
+                  onPointerDown={e => onHandleDown(e, cat.id)}
+                  onPointerMove={onHandleMove}
+                  onPointerUp={onHandleUp}
+                  className="text-gray-400 text-xl cursor-grab select-none px-1"
+                  style={{ touchAction: 'none' }}
+                >⠿</span>
+                <button onClick={() => toggle(cat.id)} className="flex-1 flex items-center gap-3 text-left truncate">
+                  <span className={`w-5 h-5 rounded-md border flex items-center justify-center shrink-0 ${
+                    on ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-gray-300 text-transparent'
+                  }`}>✓</span>
+                  <span className={`truncate ${on ? 'font-bold text-emerald-700' : 'text-gray-800'}`}>{cat.name}</span>
+                </button>
+                <button onClick={e => deleteCategory(cat, e)} className="text-gray-300 hover:text-red-500 text-lg px-1 leading-none">×</button>
+              </div>
+            );
+          })}
           {list.length === 0 && (
             <p className="text-center text-gray-400 py-6 text-sm">Noch keine Kategorien</p>
           )}
+        </div>
+
+        <div className="p-3 border-t border-gray-100">
+          <button onClick={onClose} className="w-full py-3 bg-gray-900 text-white font-bold rounded-xl active:bg-gray-800">
+            Fertig
+          </button>
         </div>
       </div>
     </div>
@@ -184,7 +189,7 @@ export default function ProductsPage() {
       setEditId(null);
     } else {
       await db.products.add({
-        name: name.trim(), price: parseFloat(price), einkaufspreis: ek, color, categoryId: null, createdAt: now, updatedAt: now, synced: false,
+        name: name.trim(), price: parseFloat(price), einkaufspreis: ek, color, categoryIds: [], createdAt: now, updatedAt: now, synced: false,
       });
     }
     setName(''); setPrice(''); setEinkauf(''); setColor(DEFAULT_COLOR);
@@ -207,6 +212,7 @@ export default function ProductsPage() {
   }
 
   const categoryName = (id) => categories.find(c => c.id === id)?.name ?? null;
+  const productCategoryNames = (p) => (p.categoryIds ?? []).map(categoryName).filter(Boolean);
 
   return (
     <div className="max-w-2xl mx-auto p-4 pb-10">
@@ -265,35 +271,37 @@ export default function ProductsPage() {
       </form>
 
       <div className="space-y-2">
-        {products.map(p => (
-          <div key={p.id} className="bg-white rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3">
-            <div
-              className="w-5 h-5 rounded-lg shrink-0 border border-gray-200"
-              style={{ backgroundColor: p.color || DEFAULT_COLOR }}
-            />
-            <div className="flex-1 min-w-0">
-              <div className="font-bold text-gray-800 truncate">{p.name}</div>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-xs text-gray-400 shrink-0">EK: {p.einkaufspreis != null ? `€${p.einkaufspreis}` : '—'}</span>
-                <button
-                  onClick={() => setPickerProduct(p)}
-                  className={`text-xs px-2 py-0.5 rounded-full border truncate max-w-[140px] active:bg-gray-100 ${
-                    categoryName(p.categoryId)
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                      : 'border-gray-200 text-gray-500'
-                  }`}
-                >{categoryName(p.categoryId) || '+ Kategorie'}</button>
+        {products.map(p => {
+          const catNames = productCategoryNames(p);
+          return (
+            <div key={p.id} className="bg-white rounded-2xl px-4 py-3 shadow-sm flex items-center gap-3">
+              <div
+                className="w-5 h-5 rounded-lg shrink-0 border border-gray-200"
+                style={{ backgroundColor: p.color || DEFAULT_COLOR }}
+              />
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-gray-800 truncate">{p.name}</div>
+                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                  <span className="text-xs text-gray-400 shrink-0">EK: {p.einkaufspreis != null ? `€${p.einkaufspreis}` : '—'}</span>
+                  {catNames.map(n => (
+                    <span key={n} className="text-xs px-2 py-0.5 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 truncate max-w-[120px]">{n}</span>
+                  ))}
+                  <button
+                    onClick={() => setPickerProduct(p)}
+                    className="text-xs px-2 py-0.5 rounded-full border border-gray-200 text-gray-500 active:bg-gray-100"
+                  >{catNames.length ? 'Ändern' : '+ Kategorie'}</button>
+                </div>
               </div>
+              <div className="text-emerald-600 font-bold text-lg">€{p.price}</div>
+              <button onClick={() => startEdit(p)}
+                className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium active:bg-gray-200"
+              >Bearbeiten</button>
+              <button onClick={() => deleteProduct(p.id)}
+                className="px-3 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium active:bg-red-100"
+              >Löschen</button>
             </div>
-            <div className="text-emerald-600 font-bold text-lg">€{p.price}</div>
-            <button onClick={() => startEdit(p)}
-              className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium active:bg-gray-200"
-            >Bearbeiten</button>
-            <button onClick={() => deleteProduct(p.id)}
-              className="px-3 py-2 bg-red-50 text-red-600 rounded-lg text-sm font-medium active:bg-red-100"
-            >Löschen</button>
-          </div>
-        ))}
+          );
+        })}
         {products.length === 0 && (
           <p className="text-center text-gray-400 py-10">Noch keine Produkte hinzugefügt</p>
         )}
