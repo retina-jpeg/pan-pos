@@ -6,7 +6,7 @@ import { useCartStore } from '../stores/cartStore';
 import { runAutoSync } from '../autoSync';
 import { deleteLocationRemote } from '../sync';
 import NumPad from '../components/NumPad';
-import PazarEditPanel from '../components/PazarEditPanel';
+import PazarEditor from '../components/PazarEditor';
 
 const EXPENSE_CATEGORIES = ['Miete', 'Strom', 'Hotel', 'Fahrtkosten', 'Sonstige'];
 
@@ -230,7 +230,7 @@ export default function CashierPage() {
   const [showModal, setShowModal]     = useState(false);
   const [pazarName, setPazarName]     = useState('');
   const [expenses, setExpenses]       = useState({});
-  const [editingId, setEditingId]     = useState(null); // loc.id whose edit panel is open
+  const [editingPazar, setEditingPazar] = useState(null); // market being edited (full-screen)
 
   const [products, setProducts]       = useState([]);
   const [categories, setCategories]   = useState([]);
@@ -350,6 +350,17 @@ export default function CashierPage() {
     runAutoSync();
   }, [items, activePazar, total, clearCart]);
 
+  // ── PAZAR EDITOR (full-screen) ───────────────────────────────────────────
+  if (editingPazar) {
+    return (
+      <PazarEditor
+        loc={editingPazar}
+        onBack={() => setEditingPazar(null)}
+        onPdf={generateReport}
+      />
+    );
+  }
+
   // ── PAZAR SELECTION ──────────────────────────────────────────────────────
   if (!activePazar) {
     return (
@@ -377,56 +388,50 @@ export default function CashierPage() {
 
           <div className="space-y-2">
             {filtered.map(loc => (
-              <div key={loc.id}>
-                <div
-                  className={`rounded-2xl px-4 py-3 shadow-sm flex items-center gap-2 ${loc.closed ? 'bg-gray-50' : 'bg-white'}`}
+              <div
+                key={loc.id}
+                className={`rounded-2xl px-4 py-3 shadow-sm flex items-center gap-2 ${loc.closed ? 'bg-gray-50' : 'bg-white'}`}
+              >
+                <button
+                  onClick={() => setEditingPazar(loc)}
+                  className="shrink-0 rounded-lg p-2 bg-amber-50 text-amber-600 active:bg-amber-100 transition-colors"
+                  title="Bearbeiten"
+                  aria-label="Bearbeiten"
                 >
-                  <button
-                    onClick={() => setEditingId(editingId === loc.id ? null : loc.id)}
-                    className={`shrink-0 rounded-lg p-2 transition-colors ${
-                      editingId === loc.id
-                        ? 'bg-amber-100 text-amber-700'
-                        : 'bg-amber-50 text-amber-600 active:bg-amber-100'
-                    }`}
-                    title="Bearbeiten"
-                    aria-label="Bearbeiten"
-                  >
-                    <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                      <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793 3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                    </svg>
-                  </button>
-                  {loc.closed ? (
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-gray-400">{loc.name}</span>
-                        <span className="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full font-medium shrink-0">
-                          Geschlossen
-                        </span>
-                      </div>
-                      <div className="text-sm text-gray-400 mt-0.5">
-                        {fmtDate(loc.createdAt)}
-                        {loc.closedAt && ` – ${fmtDate(loc.closedAt)}`}
-                      </div>
+                  <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793 3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                  </svg>
+                </button>
+                {loc.closed ? (
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-gray-400">{loc.name}</span>
+                      <span className="text-xs bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full font-medium shrink-0">
+                        Geschlossen
+                      </span>
                     </div>
-                  ) : (
-                    <button onClick={() => selectPazar(loc)} className="flex-1 text-left active:opacity-70 min-w-0">
-                      <div className="font-bold text-gray-800">{loc.name}</div>
-                      <div className="text-sm text-gray-400 mt-0.5">{fmtDate(loc.createdAt)}</div>
-                    </button>
-                  )}
-                  {!loc.closed && <span className="text-gray-300 text-xl shrink-0">›</span>}
-                  <button
-                    onClick={e => generateReport(loc, e)}
-                    className="px-2.5 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-sm font-medium active:bg-blue-100 shrink-0"
-                    title="PDF Bericht"
-                  >PDF</button>
-                  <button
-                    onClick={e => deletePazar(loc, e)}
-                    className="text-gray-300 hover:text-red-500 active:text-red-700 text-xl px-1 leading-none shrink-0"
-                    title="Löschen"
-                  >×</button>
-                </div>
-                {editingId === loc.id && <PazarEditPanel loc={loc} />}
+                    <div className="text-sm text-gray-400 mt-0.5">
+                      {fmtDate(loc.createdAt)}
+                      {loc.closedAt && ` – ${fmtDate(loc.closedAt)}`}
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => selectPazar(loc)} className="flex-1 text-left active:opacity-70 min-w-0">
+                    <div className="font-bold text-gray-800">{loc.name}</div>
+                    <div className="text-sm text-gray-400 mt-0.5">{fmtDate(loc.createdAt)}</div>
+                  </button>
+                )}
+                {!loc.closed && <span className="text-gray-300 text-xl shrink-0">›</span>}
+                <button
+                  onClick={e => generateReport(loc, e)}
+                  className="px-2.5 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-sm font-medium active:bg-blue-100 shrink-0"
+                  title="PDF Bericht"
+                >PDF</button>
+                <button
+                  onClick={e => deletePazar(loc, e)}
+                  className="text-gray-300 hover:text-red-500 active:text-red-700 text-xl px-1 leading-none shrink-0"
+                  title="Löschen"
+                >×</button>
               </div>
             ))}
             {filtered.length === 0 && (
