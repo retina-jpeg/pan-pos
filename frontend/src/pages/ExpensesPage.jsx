@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { db } from '../db';
+import { deleteExpenseRemote } from '../sync';
 
 const CATEGORIES = ['Miete', 'Strom', 'Hotel', 'Fahrtkosten', 'Sonstige'];
 
@@ -65,8 +66,9 @@ export default function ExpensesPage() {
     load();
   }
 
-  async function deleteExpense(id) {
-    await db.expenses.delete(id);
+  async function deleteExpense(exp) {
+    await db.expenses.delete(exp.id);
+    try { await deleteExpenseRemote(exp.backendId); } catch (err) { console.warn('Backend-Löschung fehlgeschlagen:', err); }
     load();
   }
 
@@ -129,7 +131,7 @@ export default function ExpensesPage() {
             </div>
             <div className="text-red-500 font-bold text-lg shrink-0">€{exp.amount}</div>
             <button
-              onClick={() => deleteExpense(exp.id)}
+              onClick={() => deleteExpense(exp)}
               className="text-gray-400 hover:text-red-500 px-2 py-1 text-lg leading-none active:text-red-700"
               title="Löschen"
             >×</button>
