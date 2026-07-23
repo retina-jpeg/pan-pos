@@ -60,4 +60,11 @@ public class SaleController {
         itemRepo.saveAll(items);
         return sale;
     }
+
+    @DeleteMapping("/{id}")
+    @Transactional
+    public void delete(@PathVariable Long id) {
+        // Items are removed via the Sale→items cascade.
+        saleRepo.deleteById(id);
+    }
 }

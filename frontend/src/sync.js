@@ -78,6 +78,11 @@ export async function deleteCategoryRemote(backendId) {
   await del(`/api/categories/${backendId}`);
 }
 
+export async function deleteSaleRemote(backendId) {
+  if (!backendId || !(await isBackendUp())) return;
+  await del(`/api/sales/${backendId}`);
+}
+
 // ── PULL: bring remote data down into the local DB (locations, products, sales, expenses).
 // Records are matched to their backend counterpart via `backendId` to avoid duplicates.
 // Returns true if any local data was added/updated (so the UI can refresh).

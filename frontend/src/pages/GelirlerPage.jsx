@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { db } from '../db';
+import { deleteSaleRemote } from '../sync';
 
 export default function GelirlerPage() {
   const [sales,      setSales]      = useState([]);
@@ -28,6 +29,14 @@ export default function GelirlerPage() {
   }, []);
 
   const locName = (id) => locations.find(l => l.id === id)?.name ?? '';
+
+  async function deleteSale(sale) {
+    if (!confirm(`Verkauf über €${sale.total.toFixed(2)} löschen?`)) return;
+    await db.saleItems.where('saleId').equals(sale.id).delete();
+    await db.sales.delete(sale.id);
+    try { await deleteSaleRemote(sale.backendId); } catch (err) { console.warn('Backend-Löschung fehlgeschlagen:', err); }
+    load();
+  }
 
   const filtered = sales.filter(sale => {
     if (locFilter && sale.locationId !== parseInt(locFilter)) return false;
@@ -144,6 +153,11 @@ export default function GelirlerPage() {
               <div className="text-emerald-600 font-bold text-lg shrink-0">
                 €{sale.total.toFixed(2)}
               </div>
+              <button
+                onClick={() => deleteSale(sale)}
+                className="text-gray-400 hover:text-red-500 px-2 py-1 text-lg leading-none active:text-red-700 shrink-0"
+                title="Löschen"
+              >×</button>
             </div>
           </div>
         ))}
