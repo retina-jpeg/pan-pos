@@ -390,18 +390,20 @@ export default function CashierPage() {
             {filtered.map(loc => (
               <div
                 key={loc.id}
-                className={`rounded-2xl px-4 py-3 shadow-sm flex items-center gap-2 ${loc.closed ? 'bg-gray-50' : 'bg-white'}`}
+                className={`rounded-2xl px-4 py-3 shadow-sm flex items-center gap-2 ${loc.closed ? 'bg-gray-50' : 'bg-emerald-50'}`}
               >
-                <button
-                  onClick={() => setEditingPazar(loc)}
-                  className="shrink-0 rounded-lg p-2 bg-amber-50 text-amber-600 active:bg-amber-100 transition-colors"
-                  title="Bearbeiten"
-                  aria-label="Bearbeiten"
-                >
-                  <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                    <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793 3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                  </svg>
-                </button>
+                {!loc.closed && (
+                  <button
+                    onClick={() => setEditingPazar(loc)}
+                    className="shrink-0 rounded-lg p-2 bg-amber-50 text-amber-600 active:bg-amber-100 transition-colors"
+                    title="Bearbeiten"
+                    aria-label="Bearbeiten"
+                  >
+                    <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                      <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793 3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                    </svg>
+                  </button>
+                )}
                 {loc.closed ? (
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
