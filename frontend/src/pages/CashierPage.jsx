@@ -237,6 +237,7 @@ export default function CashierPage() {
   const [activeCategory, setActiveCategory] = useState(null); // category id, '__none__', or null (= show categories)
   const [lastSale, setLastSale]       = useState(null);
   const [editingItem, setEditingItem] = useState(null);
+  const [pazarStats, setPazarStats]   = useState({ umsatz: 0, ausgaben: 0, gewinn: 0, salesCount: 0, costs: [], recentSales: [] });
 
   const { items, addItem, updateQuantity, updatePrice, setRabatt, clearCart, setLocation } = useCartStore();
   const total = items.reduce((sum, i) => sum + i.price * i.quantity, 0);
@@ -252,12 +253,39 @@ export default function CashierPage() {
     db.categories.orderBy('sortOrder').toArray().then(setCategories);
   }
 
+  // Running totals for the active market — same basis as the PDF/editor.
+  async function loadPazarStats(locId) {
+    const id = locId ?? activePazar?.id;
+    if (!id) return;
+    const sales    = await db.sales.where('locationId').equals(id).toArray();
+    const expenses = await db.expenses.where('locationId').equals(id).toArray();
+    const saleIds  = sales.map(s => s.id);
+    const items    = saleIds.length ? await db.saleItems.where('saleId').anyOf(saleIds).toArray() : [];
+    const umsatz        = sales.reduce((s, r) => s + r.total, 0);
+    const ausgaben      = expenses.reduce((s, r) => s + r.amount, 0);
+    const artikelkosten = items.reduce((s, i) => s + (i.costPrice ?? 0) * i.quantity, 0);
+    const gewinn        = umsatz / (1 + MWST_RATE) - ausgaben - artikelkosten;
+
+    // Exact cost breakdown (newest first).
+    const costs = [...expenses].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // The last 3 sales, each with its items.
+    const itemsBySale = {};
+    items.forEach(i => { (itemsBySale[i.saleId] ??= []).push(i); });
+    const recentSales = [...sales]
+      .sort((a, b) => new Date(b.date) - new Date(a.date))
+      .slice(0, 3)
+      .map(s => ({ ...s, items: itemsBySale[s.id] ?? [] }));
+
+    setPazarStats({ umsatz, ausgaben, gewinn, salesCount: sales.length, costs, recentSales });
+  }
+
   useEffect(() => { loadLocations(); }, []);
-  useEffect(() => { if (activePazar) loadCatalog(); }, [activePazar]);
+  useEffect(() => { if (activePazar) { loadCatalog(); loadPazarStats(activePazar.id); } }, [activePazar]);
   useEffect(() => {
     const onSync = () => {
       loadLocations();
-      if (activePazar) loadCatalog();
+      if (activePazar) { loadCatalog(); loadPazarStats(activePazar.id); }
     };
     window.addEventListener('pos-synced', onSync);
     return () => window.removeEventListener('pos-synced', onSync);
@@ -347,6 +375,7 @@ export default function CashierPage() {
     setLastSale({ total, itemCount: items.reduce((s, i) => s + i.quantity, 0) });
     clearCart();
     setTimeout(() => setLastSale(null), 3000);
+    loadPazarStats(activePazar.id);
     runAutoSync();
   }, [items, activePazar, total, clearCart]);
 
@@ -355,7 +384,7 @@ export default function CashierPage() {
     return (
       <PazarEditor
         loc={editingPazar}
-        onBack={() => setEditingPazar(null)}
+        onBack={() => { setEditingPazar(null); loadPazarStats(editingPazar.id); }}
         onPdf={generateReport}
       />
     );
@@ -570,6 +599,78 @@ export default function CashierPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-3">
+          <button
+            type="button"
+            onClick={() => setEditingPazar(activePazar)}
+            className="relative w-full text-left mb-3 bg-white rounded-2xl shadow-sm p-4 active:bg-gray-50 transition-colors"
+            title="Bearbeiten"
+          >
+            <span className="absolute top-3 right-3 text-amber-500" aria-hidden="true">
+              <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793 3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+              </svg>
+            </span>
+            <div className="grid grid-cols-2 gap-4">
+              {/* Umsatz + last 3 sales */}
+              <div>
+                <div className="flex items-baseline gap-1.5 mb-2">
+                  <span className="text-base font-bold text-gray-700">Umsatz</span>
+                  <span className="text-base font-bold text-emerald-600">€{pazarStats.umsatz.toFixed(2)}</span>
+                  {pazarStats.salesCount ? <span className="text-[11px] text-gray-400">· {pazarStats.salesCount}</span> : null}
+                </div>
+                {pazarStats.recentSales.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {pazarStats.recentSales.map(s => (
+                      <div key={s.id} className="flex items-center justify-between gap-2 text-xs">
+                        <div className="min-w-0">
+                          <div className="text-gray-600 truncate">
+                            {s.items.map(i => `${i.productName} ×${i.quantity}`).join(', ') || '—'}
+                          </div>
+                          <div className="text-[11px] text-gray-400">
+                            {new Date(s.date).toLocaleString('de-DE', {
+                              day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                            })}
+                          </div>
+                        </div>
+                        <span className="font-medium text-emerald-600 shrink-0">€{s.total.toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-400">Noch keine Verkäufe</div>
+                )}
+              </div>
+
+              {/* Ausgaben + exact costs */}
+              <div className="border-l border-gray-100 pl-4">
+                <div className="flex items-baseline gap-1.5 mb-2">
+                  <span className="text-base font-bold text-gray-700">Ausgaben</span>
+                  <span className="text-base font-bold text-red-500">€{pazarStats.ausgaben.toFixed(2)}</span>
+                </div>
+                {pazarStats.costs.length > 0 ? (
+                  <div className="space-y-0.5">
+                    {pazarStats.costs.map(c => (
+                      <div key={c.id} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="text-gray-600 truncate">
+                          {c.category}{c.note ? ` · ${c.note}` : ''}
+                        </span>
+                        <span className="font-medium text-red-500 shrink-0">€{Number(c.amount).toFixed(2)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-400">Keine Kosten</div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-baseline justify-between mt-3 pt-3 border-t border-gray-100">
+              <span className="text-[11px] text-gray-500">Gewinn</span>
+              <span className={`font-bold ${pazarStats.gewinn >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                €{pazarStats.gewinn.toFixed(2)}
+              </span>
+            </div>
+          </button>
           {lastSale && (
             <div className="mb-3 p-3 bg-emerald-100 border border-emerald-300 rounded-xl text-emerald-800 font-medium text-center">
               Verkauf abgeschlossen — {lastSale.itemCount} Artikel · €{lastSale.total.toFixed(2)}
